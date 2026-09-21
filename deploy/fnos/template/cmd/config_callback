@@ -1,2 +1,10 @@
 #!/bin/bash
+# After the user saves the settings wizard: rewrite env (secret key is preserved).
+. "$(dirname "$0")/functions"
+
+# Empty DeepSeek key in the settings form means "keep the current one".
+if [ -z "${wizard_deepseek_api_key}" ] && [ -f "$ENV_FILE" ]; then
+    wizard_deepseek_api_key="$(grep '^EBK_LLM_TEXT_RECOGNITION_OPENAI_COMPATIBLE_API_KEY=' "$ENV_FILE" | head -1 | cut -d= -f2-)"
+fi
+write_env
 exit 0

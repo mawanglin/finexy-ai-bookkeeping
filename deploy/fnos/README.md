@@ -11,7 +11,7 @@ FNPACK=/path/to/fnpack deploy/fnos/build-fpk.sh          # 完整构建
 FNPACK=/path/to/fnpack deploy/fnos/build-fpk.sh --skip-build  # 复用已有 ./ezbookkeeping 与 ./dist
 ```
 
-产物：`deploy/fnos/out/finexy-<version>-x86.fpk`（仅 x86_64）。
+产物：`deploy/fnos/out/finexy-<基础版本>-<构建号>-x86.fpk`（仅 x86_64）。包版本为 `<package.json 版本>-<N>`，N 保存在 `deploy/fnos/BUILD_NUMBER`，每次构建自动加 1，请随提交一起保存。
 
 ## 安装向导
 
@@ -20,7 +20,7 @@ FNPACK=/path/to/fnpack deploy/fnos/build-fpk.sh --skip-build  # 复用已有 ./e
 - 签名密钥（留空自动随机生成，升级时保留）
 - DeepSeek API Key / 模型（可选，留空不启用 AI 文本记账）
 
-配置写入 `${TRIM_PKGVAR}/finexy.env`，数据库、日志、附件均在 `${TRIM_PKGVAR}` 下，升级不丢失。改配置直接编辑该文件后重启应用。
+配置写入 `${TRIM_PKGVAR}/finexy.env`，数据库、日志、附件均在 `${TRIM_PKGVAR}` 下，升级不丢失。除签名密钥外，安装向导中的设置项都可在“应用设置”中修改，保存后需重启应用生效（DeepSeek Key 留空表示保持当前值）。也可直接编辑该文件后重启应用。
 
 ## 与 Docker 版的差异
 

@@ -9,14 +9,21 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 FNPACK="${FNPACK:-fnpack}"
 OUT="${OUT:-$ROOT/deploy/fnos/out}"
-VERSION="$(grep '"version": ' "$ROOT/package.json" | head -1 | awk -F'"' '{print $4}')"
+BASE_VERSION="$(grep '"version": ' "$ROOT/package.json" | head -1 | awk -F'"' '{print $4}')"
+
+# Every build bumps a counter kept in deploy/fnos/BUILD_NUMBER: package version = <base>-<N>.
+BUILD_FILE="$HERE/BUILD_NUMBER"
+BUILD_NUMBER=$(( $(cat "$BUILD_FILE" 2>/dev/null || echo 0) + 1 ))
+echo "$BUILD_NUMBER" > "$BUILD_FILE"
+VERSION="$BASE_VERSION-$BUILD_NUMBER"
+echo "Building Finexy fpk version $VERSION"
 
 cd "$ROOT"
 if [ "${1:-}" != "--skip-build" ]; then
     # Fully static binary (pure-Go DNS/user lookups) so it does not depend on the NAS glibc version.
     COMMIT="$(git rev-parse --short=7 HEAD)"
     CGO_ENABLED=1 go build -trimpath -tags 'netgo osusergo' \
-        -ldflags "-w -s -linkmode external -extldflags '-static' -X main.Version=$VERSION -X main.CommitHash=$COMMIT" \
+        -ldflags "-w -s -linkmode external -extldflags '-static' -X main.Version=$BASE_VERSION -X main.CommitHash=$COMMIT" \
         -o ezbookkeeping ezbookkeeping.go
     ./build.sh frontend --no-test --no-lint
 fi

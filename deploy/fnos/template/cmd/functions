@@ -4,3 +4,46 @@ APP_HOME="${TRIM_APPDEST}"
 DATA_DIR="${TRIM_PKGVAR}"
 ENV_FILE="${DATA_DIR}/finexy.env"
 PID_FILE="${DATA_DIR}/finexy.pid"
+
+# write_env: (re)generate finexy.env from wizard_* variables.
+# The signing secret is kept from the existing file unless a new one is provided.
+write_env() {
+    local port ext domain secret
+    port="${wizard_port:-8080}"
+    case "$port" in ''|*[!0-9]*) port=8080 ;; esac
+    if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then port=8080; fi
+
+    secret="${wizard_secret_key}"
+    if [ -z "$secret" ] && [ -f "$ENV_FILE" ]; then
+        secret="$(grep '^EBK_SECURITY_SECRET_KEY=' "$ENV_FILE" | head -1 | cut -d= -f2-)"
+    fi
+    [ -n "$secret" ] || secret="$(head -c 48 /dev/urandom | base64 | tr -d '/+=\n' | head -c 40)"
+
+    ext="${wizard_external_url%/}"
+    [ -n "$ext" ] || ext="http://localhost:${port}"
+    domain="$(echo "$ext" | sed -E 's#^[a-z]+://##; s#[:/].*$##')"
+
+    mkdir -p "$DATA_DIR/data" "$DATA_DIR/log" "$DATA_DIR/storage"
+    {
+        echo "EBK_SERVER_HTTP_PORT=${port}"
+        echo "EBK_SERVER_DOMAIN=${domain}"
+        echo "EBK_SERVER_ROOT_URL=${ext}/"
+        echo "EBK_SECURITY_SECRET_KEY=${secret}"
+        echo "EBK_SERVER_STATIC_ROOT_PATH=${APP_HOME}/public"
+        echo "EBK_DATABASE_DB_PATH=${DATA_DIR}/data/ezbookkeeping.db"
+        echo "EBK_LOG_LOG_PATH=${DATA_DIR}/log/ezbookkeeping.log"
+        echo "EBK_STORAGE_LOCAL_FILESYSTEM_PATH=${DATA_DIR}/storage/"
+        echo "EBK_MCP_ENABLE_MCP=true"
+        echo "TZ=Asia/Shanghai"
+        if [ -n "${wizard_deepseek_api_key}" ]; then
+            echo "EBK_LLM_TRANSACTION_FROM_AI_TEXT_RECOGNITION=true"
+            echo "EBK_LLM_TEXT_RECOGNITION_LLM_PROVIDER=openai_compatible"
+            echo "EBK_LLM_TEXT_RECOGNITION_OPENAI_COMPATIBLE_BASE_URL=https://api.deepseek.com"
+            echo "EBK_LLM_TEXT_RECOGNITION_OPENAI_COMPATIBLE_API_KEY=${wizard_deepseek_api_key}"
+            echo "EBK_LLM_TEXT_RECOGNITION_OPENAI_COMPATIBLE_MODEL_ID=${wizard_deepseek_model:-deepseek-v4-flash}"
+            echo "EBK_LLM_TEXT_RECOGNITION_REQUEST_TIMEOUT=120000"
+        fi
+    } > "$ENV_FILE.tmp"
+    chmod 600 "$ENV_FILE.tmp"
+    mv "$ENV_FILE.tmp" "$ENV_FILE"
+}

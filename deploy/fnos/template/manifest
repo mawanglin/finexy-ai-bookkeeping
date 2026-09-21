@@ -11,5 +11,4 @@ distributor=mawanglin
 distributor_url=https://github.com/mawanglin/finexy-ai-bookkeeping
 desktop_uidir=ui
 desktop_applaunchname=finexy.Application
-service_port=8080
-checkport=true
+checkport=false
