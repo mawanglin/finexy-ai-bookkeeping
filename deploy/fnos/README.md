@@ -30,3 +30,12 @@ FNPACK=/path/to/fnpack deploy/fnos/build-fpk.sh --skip-build  # 复用已有 ./e
 ## 手机访问
 
 应用以“端口入口”注册到飞牛桌面，飞牛 App 可从应用列表打开。也可直接使用 Finexy 自带 Android App / PWA 连接服务地址。
+
+## CI 构建（GitHub Actions / Gitea Actions）
+
+`.github/workflows/fnos-fpk.yml` 与 `.gitea/workflows/fnos-fpk.yml`（Gitea 存在 `.gitea/workflows` 时不会读取 `.github/workflows`，所以各一份）：
+
+- **手动触发**（`workflow_dispatch`）：构建并把 fpk 和 `SHA256SUMS.txt` 作为构建产物保留。
+- **推送 `fnos-v*` 标签**（如 `fnos-v1.9.0-6`）：构建后创建 Release 并上传 fpk。
+- 包版本为 `<package.json 版本>-<run 编号>`（脚本读取环境变量 `BUILD_NUMBER`，CI 不修改仓库里的 `BUILD_NUMBER` 文件）。
+- Gitea 端使用 `goproxy.cn`，且要求 runner 有 `ubuntu-latest` 标签、能访问 Actions 仓库与 `static2.fnnas.com`。

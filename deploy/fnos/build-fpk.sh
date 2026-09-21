@@ -11,12 +11,27 @@ FNPACK="${FNPACK:-fnpack}"
 OUT="${OUT:-$ROOT/deploy/fnos/out}"
 BASE_VERSION="$(grep '"version": ' "$ROOT/package.json" | head -1 | awk -F'"' '{print $4}')"
 
-# Every build bumps a counter kept in deploy/fnos/BUILD_NUMBER: package version = <base>-<N>.
-BUILD_FILE="$HERE/BUILD_NUMBER"
-BUILD_NUMBER=$(( $(cat "$BUILD_FILE" 2>/dev/null || echo 0) + 1 ))
-echo "$BUILD_NUMBER" > "$BUILD_FILE"
+# Package version = <base>-<N>. CI passes BUILD_NUMBER (e.g. the run number); locally every build
+# bumps the counter kept in deploy/fnos/BUILD_NUMBER.
+if [ -z "${BUILD_NUMBER:-}" ]; then
+    BUILD_FILE="$HERE/BUILD_NUMBER"
+    BUILD_NUMBER=$(( $(cat "$BUILD_FILE" 2>/dev/null || echo 0) + 1 ))
+    echo "$BUILD_NUMBER" > "$BUILD_FILE"
+fi
 VERSION="$BASE_VERSION-$BUILD_NUMBER"
 echo "Building Finexy fpk version $VERSION"
+
+# Fetch fnpack when it is not available.
+FNPACK_VERSION="${FNPACK_VERSION:-1.2.3}"
+if ! command -v "$FNPACK" >/dev/null 2>&1; then
+    FNPACK="$(mktemp -d)/fnpack"
+    echo "Downloading fnpack $FNPACK_VERSION..."
+    curl -fsSL -o "$FNPACK" "https://static2.fnnas.com/fnpack/fnpack-$FNPACK_VERSION-linux-amd64"
+    chmod +x "$FNPACK"
+fi
+
+# Pillow is used to derive the package icons.
+python3 -c "import PIL" 2>/dev/null || python3 -m pip install --quiet --user pillow
 
 cd "$ROOT"
 if [ "${1:-}" != "--skip-build" ]; then
