@@ -1,0 +1,6 @@
+#!/bin/bash
+# Shared helpers for Finexy fnOS native package
+APP_HOME="${TRIM_APPDEST}"
+DATA_DIR="${TRIM_PKGVAR}"
+ENV_FILE="${DATA_DIR}/finexy.env"
+PID_FILE="${DATA_DIR}/finexy.pid"

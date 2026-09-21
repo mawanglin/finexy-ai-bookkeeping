@@ -1,0 +1,47 @@
+[
+  {
+    "stepTitle": "Finexy 基础设置",
+    "items": [
+      {
+        "type": "text",
+        "field": "wizard_port",
+        "label": "服务端口",
+        "initValue": "8080",
+        "rules": [{ "required": true, "message": "请输入端口" }]
+      },
+      {
+        "type": "text",
+        "field": "wizard_external_url",
+        "label": "外部访问地址（可选）",
+        "initValue": "",
+        "rules": [{ "required": false }]
+      },
+      {
+        "type": "password",
+        "field": "wizard_secret_key",
+        "label": "签名密钥（留空则自动随机生成）",
+        "initValue": "",
+        "rules": [{ "required": false }]
+      }
+    ]
+  },
+  {
+    "stepTitle": "AI 文本记账（可选）",
+    "items": [
+      {
+        "type": "password",
+        "field": "wizard_deepseek_api_key",
+        "label": "DeepSeek API Key（留空则不启用）",
+        "initValue": "",
+        "rules": [{ "required": false }]
+      },
+      {
+        "type": "text",
+        "field": "wizard_deepseek_model",
+        "label": "模型 ID",
+        "initValue": "deepseek-v4-flash",
+        "rules": [{ "required": false }]
+      }
+    ]
+  }
+]

@@ -1,0 +1,15 @@
+appname=finexy
+version=@VERSION@
+display_name=Finexy 记账
+desc=以账本为中心的自托管财务管理系统（原生运行，无需 Docker）。支持多账本、成员共享、AI 文本记账与 MCP。
+platform=x86
+ctl_stop=true
+source=thirdparty
+maintainer=mawanglin
+maintainer_url=https://github.com/mawanglin/finexy-ai-bookkeeping
+distributor=mawanglin
+distributor_url=https://github.com/mawanglin/finexy-ai-bookkeeping
+desktop_uidir=ui
+desktop_applaunchname=finexy.Application
+service_port=8080
+checkport=true

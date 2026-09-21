@@ -1,0 +1,40 @@
+#!/bin/bash
+# fnOS lifecycle entry: start | stop | status
+. "$(dirname "$0")/functions"
+
+is_running() {
+    [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
+}
+
+start_app() {
+    if is_running; then
+        return 0
+    fi
+    [ -f "$ENV_FILE" ] || { echo "missing $ENV_FILE" >&2; return 1; }
+    mkdir -p "$DATA_DIR/data" "$DATA_DIR/log" "$DATA_DIR/storage"
+    set -a
+    . "$ENV_FILE"
+    set +a
+    cd "$APP_HOME" || return 1
+    nohup ./ezbookkeeping server run >> "$DATA_DIR/log/stdout.log" 2>&1 &
+    echo $! > "$PID_FILE"
+}
+
+stop_app() {
+    is_running || { rm -f "$PID_FILE"; return 0; }
+    pid=$(cat "$PID_FILE")
+    kill "$pid"
+    for _ in $(seq 1 30); do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 1
+    done
+    kill -0 "$pid" 2>/dev/null && kill -9 "$pid"
+    rm -f "$PID_FILE"
+}
+
+case "$1" in
+    start)  start_app ;;
+    stop)   stop_app ;;
+    status) is_running && exit 0 || exit 3 ;;
+    *)      echo "usage: $0 {start|stop|status}" >&2; exit 1 ;;
+esac
