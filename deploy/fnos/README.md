@@ -11,7 +11,7 @@ FNPACK=/path/to/fnpack deploy/fnos/build-fpk.sh          # 完整构建
 FNPACK=/path/to/fnpack deploy/fnos/build-fpk.sh --skip-build  # 复用已有 ./ezbookkeeping 与 ./dist
 ```
 
-产物：`deploy/fnos/out/finexy-<基础版本>-<构建号>-x86.fpk`（仅 x86_64）。包版本为 `<package.json 版本>-<N>`，N 保存在 `deploy/fnos/BUILD_NUMBER`，每次构建自动加 1，请随提交一起保存。
+产物：`deploy/fnos/out/finexy-<基础版本>-<构建号>-<x86|arm>.fpk`。默认只构建 x86_64；`ARCHS="x86 arm"` 同时构建 ARM（linux/arm64）包，交叉编译需要 aarch64 C 编译器，未安装时脚本会自动下载 musl.cc 工具链（也可用 `CC_ARM64` 指定）。包版本为 `<package.json 版本>-<N>`，N 保存在 `deploy/fnos/BUILD_NUMBER`，每次构建自动加 1，请随提交一起保存。
 
 ## 安装向导
 
@@ -35,7 +35,8 @@ FNPACK=/path/to/fnpack deploy/fnos/build-fpk.sh --skip-build  # 复用已有 ./e
 
 `.github/workflows/fnos-fpk.yml` 与 `.gitea/workflows/fnos-fpk.yml`（Gitea 存在 `.gitea/workflows` 时不会读取 `.github/workflows`，所以各一份）：
 
-- **手动触发**（`workflow_dispatch`）：构建并把 fpk 和 `SHA256SUMS.txt` 作为构建产物保留。
+- **手动触发**（`workflow_dispatch`）：同时构建 x86 与 arm 两个包，并把 fpk 和 `SHA256SUMS.txt` 作为构建产物保留。
 - **推送 `fnos-v*` 标签**（如 `fnos-v1.9.0-6`）：构建后创建 Release 并上传 fpk。
 - 包版本为 `<package.json 版本>-<run 编号>`（脚本读取环境变量 `BUILD_NUMBER`，CI 不修改仓库里的 `BUILD_NUMBER` 文件）。
-- Gitea 端使用 `goproxy.cn`，且要求 runner 有 `ubuntu-latest` 标签、能访问 Actions 仓库与 `static2.fnnas.com`。
+- ARM 交叉编译会自动下载 musl.cc 工具链（约 100 MB）。
+- Gitea 端使用 `goproxy.cn`，且要求 runner 有 `ubuntu-latest` 标签、能访问 Actions 仓库、`static2.fnnas.com` 与 `musl.cc`。

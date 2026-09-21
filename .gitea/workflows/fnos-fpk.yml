@@ -26,6 +26,7 @@ jobs:
       - name: Build fpk
         env:
           BUILD_NUMBER: ${{ github.run_number }}
+          ARCHS: "x86 arm"
         run: |
           deploy/fnos/build-fpk.sh
           cd deploy/fnos/out
@@ -47,7 +48,7 @@ jobs:
           TAG="${{ github.ref_name }}"
           RESP=$(curl -fsS -X POST "$API/releases" \
             -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
-            -d "{\"tag_name\":\"$TAG\",\"name\":\"Finexy fnOS fpk $TAG\",\"body\":\"Native (non-Docker) fnOS package, x86_64. No OCR service included.\"}")
+            -d "{\"tag_name\":\"$TAG\",\"name\":\"Finexy fnOS fpk $TAG\",\"body\":\"Native (non-Docker) fnOS packages for x86_64 (-x86.fpk) and ARM64 (-arm.fpk). No OCR service included.\"}")
           ID=$(echo "$RESP" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
           for f in deploy/fnos/out/*.fpk deploy/fnos/out/SHA256SUMS.txt; do
             curl -fsS -X POST "$API/releases/$ID/assets?name=$(basename "$f")" \
