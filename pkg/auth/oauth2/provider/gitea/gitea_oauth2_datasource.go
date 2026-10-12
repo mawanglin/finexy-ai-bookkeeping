@@ -1,7 +1,7 @@
 package gitea
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/auth/oauth2/data"

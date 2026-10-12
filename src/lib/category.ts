@@ -1,5 +1,6 @@
-import { reversed, keys, values } from '@/core/base.ts';
+import { reversed, keys, keysIfValueEquals, values } from '@/core/base.ts';
 import { NormalizedText } from '@/core/text.ts';
+import { IconType } from '@/core/icon.ts';
 import { type LocalizedPresetCategory, type PresetCategory, CategoryType, ALL_CATEGORY_TYPES } from '@/core/category.ts';
 import { TransactionType } from '@/core/transaction.ts';
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, DEFAULT_TRANSFER_CATEGORIES } from '@/consts/category.ts';
@@ -37,11 +38,13 @@ export function getAllLocalizedTransactionDefaultCategories(categoryType: 0 | Ca
             name: translateCategoryName(category.name),
             type: currentCategoryType,
             icon: category.categoryIconId,
+            iconType: IconType.System,
             color: category.color,
             subCategories: category.subCategories.map(subCategory => ({
                 name: translateCategoryName(subCategory.name),
                 type: currentCategoryType,
                 icon: subCategory.categoryIconId,
+                iconType: IconType.System,
                 color: subCategory.color
             }))
         }));
@@ -83,6 +86,7 @@ export function localizedPresetCategoryToTransactionCategoryCreateWithSubCategor
             type: subPresetCategory.type,
             parentId: '0',
             icon: subPresetCategory.icon,
+            iconType: IconType.System,
             color: subPresetCategory.color,
             comment: '',
             clientSessionId: ''
@@ -95,6 +99,7 @@ export function localizedPresetCategoryToTransactionCategoryCreateWithSubCategor
         name: presetCategory.name,
         type: presetCategory.type,
         icon: presetCategory.icon,
+        iconType: IconType.System,
         color: presetCategory.color,
         subCategories: subCategories
     };
@@ -275,6 +280,44 @@ export function getFinalCategoryIdsByFilteredCategoryIds(allTransactionCategorie
     }
 
     return finalCategoryIds;
+}
+
+export function getIncludedTransactionCategoriesDisplayContent(excludeTransactionCategoryIds: Record<string, boolean>, allTransactionCategoriesMap: Record<string, TransactionCategory>): string {
+    if (!allTransactionCategoriesMap) {
+        return '';
+    }
+
+    let hasExcludeTransactionCategory = false;
+
+    for (const transactionCategoryId of keysIfValueEquals(excludeTransactionCategoryIds, true)) {
+        if (allTransactionCategoriesMap[transactionCategoryId]) {
+            hasExcludeTransactionCategory = true;
+            break;
+        }
+    }
+
+    if (!hasExcludeTransactionCategory) {
+        return 'All';
+    }
+
+    let allTransactionCategoryExcluded = true;
+
+    for (const transactionCategory of values(allTransactionCategoriesMap)) {
+        if (transactionCategory.type !== CategoryType.Income && transactionCategory.type !== CategoryType.Expense) {
+            continue;
+        }
+
+        if (!excludeTransactionCategoryIds[transactionCategory.id]) {
+            allTransactionCategoryExcluded = false;
+            break;
+        }
+    }
+
+    if (allTransactionCategoryExcluded) {
+        return 'None';
+    }
+
+    return 'Partial';
 }
 
 export function isSubCategoryIdAvailable(categories: TransactionCategory[], categoryId: string): boolean {
@@ -501,4 +544,26 @@ export function isSubCategoriesHasButNotAllChecked(category: TransactionCategory
     }
 
     return checkedCount > 0 && checkedCount < category.subCategories.length;
+}
+
+export function isAllCategoriesChecked(allCategories: Record<number, TransactionCategory[]>, includeCategoryIds: Record<string, boolean>): boolean {
+    if (!allCategories) {
+        return true;
+    }
+
+    for (const categories of values(allCategories)) {
+        for (const category of categories) {
+            if (!category.subCategories || category.subCategories.length < 1) {
+                continue;
+            }
+
+            for (const subCategory of category.subCategories) {
+                if (!includeCategoryIds[subCategory.id]) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    return true;
 }

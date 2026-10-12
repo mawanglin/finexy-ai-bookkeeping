@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/ini.v1"
 )
 
 func TestWebAIConfigurationSaveLoadAndReplace(t *testing.T) {
@@ -40,4 +41,20 @@ func TestApplyWebAIConfigurationKeepsEnvironmentKeyWhenOverrideKeyIsEmpty(t *tes
 	assert.Equal(t, "https://api.deepseek.com", config.TextRecognitionLLMConfig.OpenAICompatibleBaseURL)
 	assert.Equal(t, "environment-secret", config.TextRecognitionLLMConfig.OpenAICompatibleAPIKey)
 	assert.Equal(t, uint32(120000), config.TextRecognitionLLMConfig.LargeLanguageModelAPIRequestTimeout)
+}
+
+func TestLoadAIConfigurationLegacyEnvironmentFallback(t *testing.T) {
+	configFile := ini.Empty()
+	configFile.Section("ai").Key("transaction_from_ai_text_recognition").SetValue("false")
+
+	t.Setenv("EBK_LLM_TRANSACTION_FROM_AI_TEXT_RECOGNITION", "true")
+	config := &Config{}
+	assert.Nil(t, loadAIConfiguration(config, configFile, "ai", "llm"))
+	assert.True(t, config.TransactionFromAITextRecognition)
+	assert.False(t, config.TransactionFromAIImageRecognition)
+
+	t.Setenv("EBK_AI_TRANSACTION_FROM_AI_TEXT_RECOGNITION", "false")
+	config = &Config{}
+	assert.Nil(t, loadAIConfiguration(config, configFile, "ai", "llm"))
+	assert.False(t, config.TransactionFromAITextRecognition)
 }

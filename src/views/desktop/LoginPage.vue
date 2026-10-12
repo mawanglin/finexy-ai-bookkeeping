@@ -3,7 +3,7 @@
         <router-link to="/">
             <div class="auth-logo d-flex align-start gap-x-3">
                 <img alt="logo" class="login-page-logo" :src="APPLICATION_LOGO_PATH" />
-                <h1 class="font-weight-medium leading-normal text-2xl">{{ tt('global.app.title') }}</h1>
+                <span class="auth-app-title">{{ tt('global.app.title') }}</span>
             </div>
         </router-link>
         <v-row no-gutters class="auth-wrapper">
@@ -27,10 +27,10 @@
                             </div>
                             <router-link to="/">返回</router-link>
                         </div>
-                        <v-card-text>
-                            <h4 class="text-h4 mb-2">{{ isSwitchingAccount ? '登录其他账号' : tt('Welcome to Finexy') }}</h4>
-                            <p class="mb-0" v-if="isInternalAuthEnabled()">{{ isSwitchingAccount ? '请输入要切换到的账号信息' : tt('Please log in with your Finexy account') }}</p>
-                            <p class="mt-1 mb-0" v-if="tips">{{ tips }}</p>
+                        <v-card-text class="py-0">
+                            <div class="text-headline-small mb-2">{{ isSwitchingAccount ? '登录其他账号' : tt('Welcome to Finexy') }}</div>
+                            <div class="auth-message text-body-large mb-0" v-if="isInternalAuthEnabled()">{{ isSwitchingAccount ? '请输入要切换到的账号信息' : tt('Please log in with your Finexy account') }}</div>
+                            <div class="auth-message text-body-large mt-1 mb-0" v-if="tips">{{ tips }}</div>
                         </v-card-text>
 
                         <v-card-text class="pb-0 mb-6">
@@ -88,6 +88,7 @@
                                         <v-text-field
                                             persistent-placeholder
                                             type="text"
+                                            autocomplete="off"
                                             :disabled="loggingInByPassword || loggingInByOAuth2 || verifying"
                                             :label="tt('Backup Code')"
                                             :placeholder="tt('Backup Code')"
@@ -99,7 +100,7 @@
                                         />
                                     </v-col>
 
-                                    <v-col cols="12" class="py-0 mt-1 mb-4">
+                                    <v-col cols="12" class="auth-links text-body-large py-0 mt-1 mb-4" v-if="isInternalAuthEnabled()">
                                         <div class="d-flex align-center justify-space-between flex-wrap">
                                             <a href="javascript:void(0);"
                                                :class="{ 'disabled': loggingInByPassword || loggingInByOAuth2 || verifying }"
@@ -126,7 +127,7 @@
                                             <v-progress-circular indeterminate size="22" class="ms-2" v-if="verifying"></v-progress-circular>
                                         </v-btn>
 
-                                        <v-col cols="12" class="d-flex align-center px-0 text-no-wrap" v-if="isInternalAuthEnabled() && isOAuth2Enabled()">
+                                        <v-col cols="12" class="d-flex align-center my-3 px-0 text-body-medium text-no-wrap" v-if="isInternalAuthEnabled() && isOAuth2Enabled()">
                                             <v-divider class="me-3" />
                                             {{ tt('or') }}
                                             <v-divider class="ms-3" />
@@ -139,7 +140,17 @@
                                         </v-btn>
                                     </v-col>
 
-                                    <v-col cols="12" class="text-center text-base" v-if="isInternalAuthEnabled()">
+                                    <v-col cols="12" class="auth-links text-body-large" v-if="!isInternalAuthEnabled()">
+                                        <div class="text-center">
+                                            <a href="javascript:void(0);"
+                                               :class="{ 'disabled': loggingInByPassword || loggingInByOAuth2 || verifying }"
+                                               @click="showMobileQrCode = true">
+                                                <span class="nav-item-title">{{ tt('Use on Mobile Device') }}</span>
+                                            </a>
+                                        </div>
+                                    </v-col>
+
+                                    <v-col cols="12" class="auth-links text-center text-body-large mt-2" v-if="isInternalAuthEnabled()">
                                         <span class="me-1">{{ tt('Don\'t have an account?') }}</span>
                                         <router-link class="text-primary" to="/signup"
                                                      :class="{ 'disabled': !isUserRegistrationEnabled() || loggingInByPassword || loggingInByOAuth2 || verifying }">
@@ -153,22 +164,18 @@
                 </div>
                 <v-spacer/>
                 <div class="d-flex align-center justify-center">
-                    <v-card variant="flat" class="w-100 px-4 pb-4" max-width="500">
+                    <v-card variant="flat" class="w-100 px-4 pb-3" max-width="500">
                         <v-card-text class="pt-0">
-                            <v-row>
-                                <v-col cols="12" class="text-center">
-                                    <language-select-button :disabled="loggingInByPassword || loggingInByOAuth2 || verifying" />
-                                </v-col>
+                            <div class="text-center">
+                                <language-select-button :disabled="loggingInByPassword || loggingInByOAuth2 || verifying" />
+                            </div>
 
-                                <v-col cols="12" class="d-flex align-center pt-0">
-                                    <v-divider />
-                                </v-col>
+                            <v-divider class="mt-2 mb-3" />
 
-                                <v-col cols="12" class="text-center text-sm">
-                                    <span>Powered by </span>
-                                    <a href="https://github.com/SMTM-PH/finexy-ai-bookkeeping" target="_blank">Finexy</a>&nbsp;<span>{{ version }}</span>
-                                </v-col>
-                            </v-row>
+                            <div class="auth-powered-by text-center">
+                                <span>Powered by </span>
+                                <a href="https://github.com/SMTM-PH/finexy-ai-bookkeeping" target="_blank">Finexy</a>&nbsp;<span>{{ version }}</span>
+                            </div>
                         </v-card-text>
                     </v-card>
                 </div>
@@ -352,7 +359,8 @@ oauth2ClientSessionId.value = generateRandomUUID();
 </script>
 
 <style scoped>
-.auth-logo h1 {
+.auth-logo h1,
+.auth-logo .auth-app-title {
     color: #f7f8fb !important;
     font-weight: 700 !important;
     text-shadow: 0 1px 18px rgba(0, 0, 0, .35);
@@ -424,7 +432,8 @@ oauth2ClientSessionId.value = generateRandomUUID();
     color: #12141a !important;
 }
 
-.auth-card :deep(h4) {
+.auth-card :deep(h4),
+.auth-card :deep(.text-headline-small) {
     color: #12141a !important;
     font-size: 30px !important;
     font-weight: 800 !important;
@@ -433,7 +442,8 @@ oauth2ClientSessionId.value = generateRandomUUID();
     opacity: 1 !important;
 }
 
-.auth-card :deep(.v-card-text > p) {
+.auth-card :deep(.v-card-text > p),
+.auth-card :deep(.v-card-text > .auth-message) {
     color: #475467 !important;
     font-size: 14px;
     font-weight: 500;

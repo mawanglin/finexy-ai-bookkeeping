@@ -188,6 +188,7 @@ import SnackBar from '@/components/desktop/SnackBar.vue';
 import { useI18n } from '@/locales/helpers.ts';
 import { useProductAssetsStore } from '@/stores/productAsset.ts';
 import { AMOUNT_FACTOR } from '@/consts/numeral.ts';
+import { parseBigDecimal } from '@/lib/numeral.ts';
 import {
     ProductAssetCategory,
     ProductAssetStatus,
@@ -269,7 +270,7 @@ const summaries = computed(() => [
 ]);
 
 function money(value: number): string {
-    return formatAmountToLocalizedNumeralsWithCurrency(value, 'CNY');
+    return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(value), 'CNY');
 }
 
 function today(): string {

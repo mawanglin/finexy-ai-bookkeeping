@@ -45,6 +45,7 @@ func (a *ServerSettingsApi) ServerSettingsJavascriptHandler(c *core.WebContext) 
 	a.appendBooleanSetting(builder, "f", config.EnableInternalAuth && config.EnableUserForgetPassword)
 	a.appendBooleanSetting(builder, "t", config.EnableAPIToken)
 	a.appendBooleanSetting(builder, "v", config.EnableUserVerifyEmail)
+	a.appendBooleanSetting(builder, "c", config.EnableUserCustomIcon)
 	a.appendBooleanSetting(builder, "p", config.EnableTransactionPictures)
 	a.appendBooleanSetting(builder, "s", config.EnableScheduledTransaction)
 	a.appendBooleanSetting(builder, "e", config.EnableDataExport)
@@ -75,6 +76,12 @@ func (a *ServerSettingsApi) ServerSettingsJavascriptHandler(c *core.WebContext) 
 	if config.LocalOCRServerURL != "" && config.TransactionFromAITextRecognition &&
 		config.TextRecognitionLLMConfig != nil && config.TextRecognitionLLMConfig.LLMProvider != "" {
 		a.appendBooleanSetting(builder, "ocr", true)
+	}
+
+	if config.CodingAssistantLLMConfig != nil && config.CodingAssistantLLMConfig.LLMProvider != "" {
+		if config.InsightsExplorerCodingAssistant {
+			a.appendBooleanSetting(builder, "llmec", true)
+		}
 	}
 
 	if config.LoginPageTips.Enabled {
@@ -147,6 +154,8 @@ func (a *ServerSettingsApi) ServerSettingsJavascriptHandler(c *core.WebContext) 
 	if config.ExchangeRatesRequestTimeoutExceedDefaultValue {
 		a.appendIntegerSetting(builder, "errt", int(config.ExchangeRatesRequestTimeout))
 	}
+
+	a.appendBooleanSetting(builder, "dlp", config.EnableLanguagePreview)
 
 	builder.WriteString(ezbookkeepingServerSettingsJavascriptFileFooter)
 

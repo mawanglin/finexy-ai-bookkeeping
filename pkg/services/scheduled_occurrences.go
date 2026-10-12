@@ -157,6 +157,16 @@ func (s *ScheduledOccurrenceService) Confirm(c core.Context, uid, templateId, sc
 // Enqueue preserves the first snapshot even if a template changes during retry.
 // It never posts a transaction or updates an account balance.
 func (s *ScheduledOccurrenceService) Enqueue(c core.Context, template *models.TransactionTemplate, scheduledUnixTime int64) (*models.ScheduledOccurrence, error) {
+	if template == nil {
+		return nil, fmt.Errorf("invalid scheduled occurrence")
+	}
+
+	return s.EnqueueWithUtcOffset(c, template, scheduledUnixTime, template.ScheduledTimezoneUtcOffset)
+}
+
+// EnqueueWithUtcOffset stores a pending occurrence whose snapshot uses the utc offset of the occurrence itself,
+// which differs from the template offset when the template time zone observes daylight saving time.
+func (s *ScheduledOccurrenceService) EnqueueWithUtcOffset(c core.Context, template *models.TransactionTemplate, scheduledUnixTime int64, utcOffset int16) (*models.ScheduledOccurrence, error) {
 	if template == nil || template.Uid <= 0 || template.TemplateId <= 0 || scheduledUnixTime <= 0 ||
 		template.TemplateType != models.TRANSACTION_TEMPLATE_TYPE_SCHEDULE || template.Deleted ||
 		template.ScheduledFrequencyType == models.TRANSACTION_SCHEDULE_FREQUENCY_TYPE_DISABLED ||
@@ -175,7 +185,7 @@ func (s *ScheduledOccurrenceService) Enqueue(c core.Context, template *models.Tr
 		Name: template.Name, Type: template.Type, CategoryId: template.CategoryId,
 		SourceAccountId: template.AccountId, DestinationAccountId: template.RelatedAccountId,
 		SourceAmount: template.Amount, DestinationAmount: template.RelatedAccountAmount,
-		UtcOffset: template.ScheduledTimezoneUtcOffset, HideAmount: template.HideAmount,
+		UtcOffset: utcOffset, HideAmount: template.HideAmount,
 		TagIds: tags, Comment: template.Comment,
 	})
 	if err != nil {

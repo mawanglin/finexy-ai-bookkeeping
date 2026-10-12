@@ -368,7 +368,7 @@ func TestFamilyLedgerAndGoalServiceFlow(t *testing.T) {
 	require.Len(t, statistics, 2)
 	statisticsByType := make(map[models.TransactionDbType]int64, len(statistics))
 	for _, statistic := range statistics {
-		statisticsByType[statistic.Type] = statistic.Amount
+		statisticsByType[statistic.Type] = statistic.Amount.Int64()
 	}
 	assert.Equal(t, int64(150000), statisticsByType[models.TRANSACTION_DB_TYPE_TRANSFER_OUT])
 	assert.Equal(t, int64(20000), statisticsByType[models.TRANSACTION_DB_TYPE_TRANSFER_IN])

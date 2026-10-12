@@ -1,5 +1,5 @@
 # Build backend binary file
-FROM golang:1.27.0-alpine3.24 AS be-builder
+FROM golang:1.27.1-alpine3.24 AS be-builder
 ARG GOPROXY=https://proxy.golang.org,direct
 ARG RELEASE_BUILD
 ARG BUILD_PIPELINE
@@ -21,17 +21,19 @@ RUN apk add git gcc g++ libc-dev
 RUN if [ "$SKIP_TESTS" = "true" ]; then ./build.sh backend --no-test; else ./build.sh backend; fi
 
 # Build frontend files
-FROM node:26.7.0-alpine3.24 AS fe-builder
+FROM --platform=$BUILDPLATFORM node:26.10.0-alpine3.24 AS fe-builder
 ARG RELEASE_BUILD
 ARG BUILD_PIPELINE
 ARG BUILD_UNIXTIME
 ARG BUILD_DATE
 ARG SKIP_TESTS
+ARG BUILD_NODE_OPTIONS
 ENV RELEASE_BUILD=$RELEASE_BUILD
 ENV BUILD_PIPELINE=$BUILD_PIPELINE
 ENV BUILD_UNIXTIME=$BUILD_UNIXTIME
 ENV BUILD_DATE=$BUILD_DATE
 ENV SKIP_TESTS=$SKIP_TESTS
+ENV NODE_OPTIONS=$BUILD_NODE_OPTIONS
 WORKDIR /go/src/github.com/SMTM-PH/finexy-ai-bookkeeping
 COPY . .
 RUN docker/frontend-build-pre-setup.sh
@@ -39,7 +41,7 @@ RUN apk add git
 RUN if [ "$SKIP_TESTS" = "true" ]; then ./build.sh frontend --no-test; else ./build.sh frontend; fi
 
 # Package docker image
-FROM alpine:3.24.1
+FROM alpine:3.24.2
 LABEL maintainer="SMTM-PH"
 RUN addgroup -S -g 1000 ezbookkeeping && adduser -S -G ezbookkeeping -u 1000 ezbookkeeping
 RUN apk --no-cache add tzdata

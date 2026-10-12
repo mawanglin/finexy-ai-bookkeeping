@@ -943,7 +943,8 @@ data class AccountDraft(
         require(creditCardStatementDate in 0..28 && (category == 3 || creditCardStatementDate == 0)) { "账单日仅适用于信用卡，范围为 0–28" }
         val payload = JSONObject().put("name", name).put("category", category).put("type", if (isChild) 1 else type)
             .put("icon", icon.toString()).put("color", color).put("currency", if (type == 2 && !isChild) "---" else currency.uppercase())
-            .put("balance", if (type == 2 && !isChild) 0 else balanceMinor)
+            // The server accepts account balances as decimal strings of minor units
+            .put("balance", (if (type == 2 && !isChild) 0L else balanceMinor).toString())
             .put("balanceTime", if (type == 2 && !isChild || balanceMinor == 0L) 0 else System.currentTimeMillis() / 1000)
             .put("comment", comment).put("creditCardStatementDate", if (isChild) 0 else creditCardStatementDate)
         if (!isChild) payload.put("clientSessionId", java.util.UUID.randomUUID().toString())

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/datastore"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/models"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/settings"
@@ -390,7 +391,7 @@ func TestScheduledDispatchQueuesDueTemplateWithoutTouchingBalance(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	if err := Transactions.CreateScheduledTransactions(nil, time.Now().Unix(), 15*time.Minute); err != nil {
+	if err := Transactions.CreateScheduledTransactions(core.NewCronJobContext("CreateScheduledTransaction", 15*time.Minute), time.Now().Unix(), 15*time.Minute); err != nil {
 		t.Fatal(err)
 	}
 
@@ -413,7 +414,7 @@ func TestScheduledDispatchQueuesDueTemplateWithoutTouchingBalance(t *testing.T) 
 	}
 
 	// The next tick re-processes the same template without duplicating.
-	if err := Transactions.CreateScheduledTransactions(nil, time.Now().Unix(), 15*time.Minute); err != nil {
+	if err := Transactions.CreateScheduledTransactions(core.NewCronJobContext("CreateScheduledTransaction", 15*time.Minute), time.Now().Unix(), 15*time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	pendingAgain, err := ScheduledOccurrences.List(nil, uid, models.ScheduledOccurrencePending, 0, 50)
@@ -462,7 +463,7 @@ func TestScheduledDispatchFrequencyBoundaries(t *testing.T) {
 
 	runAt := func(year int, month time.Month, day int) {
 		simulated := time.Date(year, month, day, 3, 0, 0, 0, time.UTC).Unix()
-		if err := Transactions.CreateScheduledTransactions(nil, simulated, 15*time.Minute); err != nil {
+		if err := Transactions.CreateScheduledTransactions(core.NewCronJobContext("CreateScheduledTransaction", 15*time.Minute), simulated, 15*time.Minute); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -1,5 +1,5 @@
 import type { LatestExchangeRate } from '@/models/exchange_rate.ts';
-import { getExchangedAmountByRate } from '@/lib/numeral.ts';
+import { getExchangedAmountByRate, parseBigDecimal } from '@/lib/numeral.ts';
 
 // Returns how many CNY one unit of the selected foreign currency is worth.
 export function getCnyValueForCurrency(
@@ -13,5 +13,6 @@ export function getCnyValueForCurrency(
         return null;
     }
 
-    return getExchangedAmountByRate(1, currencyRate.rate, cnyRate.rate);
+    const value = getExchangedAmountByRate(parseBigDecimal(1), currencyRate.rate, cnyRate.rate);
+    return value ? value.toDoubleNumber() : null;
 }

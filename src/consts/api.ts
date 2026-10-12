@@ -20,6 +20,7 @@ export enum KnownErrorCode {
     ValidatorError = 200000,
     NothingWillBeUpdated = 200004,
     UserEmailNotVerified = 201020,
+    UserLastReconciledTimeNotEnabled = 201035,
     TwoFactorAuthorizationPasscodeEmpty = 203005,
     TransactionCannotCreateInThisTime = 205017,
     TransactionCannotModifyInThisTime = 205018,
@@ -229,6 +230,14 @@ export const PARAMETERIZED_ERRORS: ParameterizedError[] = [
     {
         localeKey: 'parameter invalid amount filter',
         regex: /^parameter "(\w+)" is invalid amount filter$/,
+        parameters: [{
+            field: 'parameter',
+            localized: true
+        }]
+    },
+    {
+        localeKey: 'parameter invalid transaction amount',
+        regex: /^parameter "(\w+)" is invalid transaction amount$/,
         parameters: [{
             field: 'parameter',
             localized: true

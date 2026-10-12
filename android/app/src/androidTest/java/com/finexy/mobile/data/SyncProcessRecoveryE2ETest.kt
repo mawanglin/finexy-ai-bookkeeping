@@ -70,7 +70,7 @@ class SyncProcessRecoveryE2ETest {
             store.put("local_mode", "false", durable = true)
             val accountId = post("v1/accounts/add.json", JSONObject().put("name", "Recovery Wallet")
                 .put("category", 1).put("type", 1).put("icon", "1").put("color", "F05537")
-                .put("currency", "CNY").put("balance", 0)
+                .put("currency", "CNY").put("balance", "0")
                 .put("balanceTime", System.currentTimeMillis() / 1000))
                 .getJSONObject("result").getString("id").toLong()
 

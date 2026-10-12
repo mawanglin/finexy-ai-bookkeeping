@@ -1,6 +1,7 @@
 package api
 
 import (
+	"slices"
 	"sort"
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
@@ -11,7 +12,6 @@ import (
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/services"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/settings"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/utils"
-	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/validators"
 )
 
 // AccountsApi represents account api
@@ -20,6 +20,7 @@ type AccountsApi struct {
 	ApiUsingDuplicateChecker
 	accounts *services.AccountService
 	users    *services.UserService
+	icons    *services.UserCustomIconService
 }
 
 // Initialize an account api singleton instance
@@ -36,6 +37,7 @@ var (
 		},
 		accounts: services.Accounts,
 		users:    services.Users,
+		icons:    services.UserCustomIcons,
 	}
 )
 
@@ -159,6 +161,18 @@ func (a *AccountsApi) AccountCreateHandler(c *core.WebContext) (any, *errs.Error
 		return nil, errs.ErrClientTimezoneOffsetInvalid
 	}
 
+	mainAccountBalance := int64(0)
+
+	if accountCreateReq.Balance != "" {
+		mainAccountBalance, err = utils.StringToInt64(accountCreateReq.Balance)
+
+		if err != nil {
+			return nil, errs.ErrIncompleteOrIncorrectSubmission
+		}
+	}
+
+	subAccountBalances := make([]int64, len(accountCreateReq.SubAccounts))
+
 	if accountCreateReq.Category < models.ACCOUNT_CATEGORY_CASH || accountCreateReq.Category > models.ACCOUNT_CATEGORY_CERTIFICATE_OF_DEPOSIT {
 		log.Warnf(c, "[accounts.AccountCreateHandler] account category invalid, category is %d", accountCreateReq.Category)
 		return nil, errs.ErrAccountCategoryInvalid
@@ -169,18 +183,33 @@ func (a *AccountsApi) AccountCreateHandler(c *core.WebContext) (any, *errs.Error
 		return nil, errs.ErrCannotSetStatementDateForNonCreditCard
 	}
 
+	if accountCreateReq.Category != models.ACCOUNT_CATEGORY_CREDIT_CARD && accountCreateReq.CreditCardLimit != "" {
+		log.Warnf(c, "[accounts.AccountCreateHandler] cannot set credit limit with category \"%d\"", accountCreateReq.Category)
+		return nil, errs.ErrCannotSetCreditLimitForNonCreditCardAccount
+	}
+
+	creditLimitForCreditCard := int64(0)
+
+	if accountCreateReq.CreditCardLimit != "" {
+		creditLimitForCreditCard, err = utils.StringToInt64(accountCreateReq.CreditCardLimit)
+
+		if err != nil || creditLimitForCreditCard <= 0 {
+			return nil, errs.ErrIncompleteOrIncorrectSubmission
+		}
+	}
+
 	if accountCreateReq.Type == models.ACCOUNT_TYPE_SINGLE_ACCOUNT {
 		if len(accountCreateReq.SubAccounts) > 0 {
 			log.Warnf(c, "[accounts.AccountCreateHandler] account cannot have any sub-accounts")
 			return nil, errs.ErrAccountCannotHaveSubAccounts
 		}
 
-		if accountCreateReq.Currency == validators.ParentAccountCurrencyPlaceholder {
-			log.Warnf(c, "[accounts.AccountCreateHandler] account cannot set currency placeholder")
+		if accountCreateReq.Currency == core.AccountCurrencyNotSetValue {
+			log.Warnf(c, "[accounts.AccountCreateHandler] account must set currency")
 			return nil, errs.ErrAccountCurrencyInvalid
 		}
 
-		if accountCreateReq.Balance != 0 && accountCreateReq.BalanceTime <= 0 {
+		if mainAccountBalance != 0 && accountCreateReq.BalanceTime <= 0 {
 			log.Warnf(c, "[accounts.AccountCreateHandler] account balance time is not set")
 			return nil, errs.ErrAccountBalanceTimeNotSet
 		}
@@ -190,18 +219,36 @@ func (a *AccountsApi) AccountCreateHandler(c *core.WebContext) (any, *errs.Error
 			return nil, errs.ErrAccountHaveNoSubAccount
 		}
 
-		if accountCreateReq.Currency != validators.ParentAccountCurrencyPlaceholder {
-			log.Warnf(c, "[accounts.AccountCreateHandler] parent account cannot set currency")
-			return nil, errs.ErrParentAccountCannotSetCurrency
+		if accountCreateReq.Category == models.ACCOUNT_CATEGORY_CREDIT_CARD {
+			if accountCreateReq.Currency == core.AccountCurrencyNotSetValue && creditLimitForCreditCard > 0 {
+				log.Warnf(c, "[accounts.AccountCreateHandler] parent account must set currency when set credit limit")
+				return nil, errs.ErrMustSetParentAccountCurrencyWhenSetCreditLimit
+			}
+		} else {
+			if accountCreateReq.Currency != core.AccountCurrencyNotSetValue {
+				log.Warnf(c, "[accounts.AccountCreateHandler] parent account cannot set currency")
+				return nil, errs.ErrParentAccountCannotSetCurrency
+			}
 		}
 
-		if accountCreateReq.Balance != 0 {
+		if mainAccountBalance != 0 {
 			log.Warnf(c, "[accounts.AccountCreateHandler] parent account cannot set balance")
 			return nil, errs.ErrParentAccountCannotSetBalance
 		}
 
 		for i := 0; i < len(accountCreateReq.SubAccounts); i++ {
 			subAccount := accountCreateReq.SubAccounts[i]
+			subAccountBalance := int64(0)
+
+			if subAccount.Balance != "" {
+				subAccountBalance, err = utils.StringToInt64(subAccount.Balance)
+
+				if err != nil {
+					return nil, errs.ErrIncompleteOrIncorrectSubmission
+				}
+			}
+
+			subAccountBalances[i] = subAccountBalance
 
 			if subAccount.Category != accountCreateReq.Category {
 				log.Warnf(c, "[accounts.AccountCreateHandler] category of sub-account#%d not equals to parent", i)
@@ -213,12 +260,12 @@ func (a *AccountsApi) AccountCreateHandler(c *core.WebContext) (any, *errs.Error
 				return nil, errs.ErrSubAccountTypeInvalid
 			}
 
-			if subAccount.Currency == validators.ParentAccountCurrencyPlaceholder {
-				log.Warnf(c, "[accounts.AccountCreateHandler] sub-account#%d cannot set currency placeholder", i)
+			if subAccount.Currency == core.AccountCurrencyNotSetValue {
+				log.Warnf(c, "[accounts.AccountCreateHandler] sub-account#%d must set currency", i)
 				return nil, errs.ErrAccountCurrencyInvalid
 			}
 
-			if subAccount.Balance != 0 && subAccount.BalanceTime <= 0 {
+			if subAccountBalance != 0 && subAccount.BalanceTime <= 0 {
 				log.Warnf(c, "[accounts.AccountCreateHandler] sub-account#%d balance time is not set", i)
 				return nil, errs.ErrAccountBalanceTimeNotSet
 			}
@@ -226,6 +273,11 @@ func (a *AccountsApi) AccountCreateHandler(c *core.WebContext) (any, *errs.Error
 			if subAccount.CreditCardStatementDate != 0 {
 				log.Warnf(c, "[accounts.AccountCreateHandler] sub-account#%d cannot set statement date", i)
 				return nil, errs.ErrCannotSetStatementDateForSubAccount
+			}
+
+			if subAccount.CreditCardLimit != "" {
+				log.Warnf(c, "[accounts.AccountCreateHandler] sub-account#%d cannot set credit limit", i)
+				return nil, errs.ErrCannotSetCreditLimitForSubAccount
 			}
 		}
 	} else {
@@ -251,10 +303,17 @@ func (a *AccountsApi) AccountCreateHandler(c *core.WebContext) (any, *errs.Error
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
 
-	mainAccount := a.createNewAccountModel(uid, &accountCreateReq, false, maxOrderId+1)
-	childrenAccounts, childrenAccountBalanceTimes := a.createSubAccountModels(uid, &accountCreateReq)
+	mainAccount := a.createNewAccountModel(uid, &accountCreateReq, mainAccountBalance, &creditLimitForCreditCard, false, maxOrderId+1)
+	childrenAccounts, childrenAccountBalanceTimes := a.createSubAccountModels(uid, &accountCreateReq, subAccountBalances)
 	for i := 0; i < len(childrenAccounts); i++ {
 		childrenAccounts[i].LedgerId = mainAccount.LedgerId
+	}
+
+	iconTypeValid := a.isAccountsIconTypeValid(c, uid, slices.Concat([]*models.Account{mainAccount}, childrenAccounts))
+
+	if !iconTypeValid {
+		log.Warnf(c, "[accounts.AccountCreateHandler] icon type invalid for user \"uid:%d\"", uid)
+		return nil, errs.ErrAccountIconInvalid
 	}
 
 	if a.CurrentConfig().EnableDuplicateSubmissionsCheck && accountCreateReq.ClientSessionId != "" {
@@ -347,6 +406,21 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 		return nil, errs.ErrCannotSetStatementDateForNonCreditCard
 	}
 
+	if accountModifyReq.Category != models.ACCOUNT_CATEGORY_CREDIT_CARD && accountModifyReq.CreditCardLimit != "" {
+		log.Warnf(c, "[accounts.AccountModifyHandler] cannot set credit limit with category \"%d\"", accountModifyReq.Category)
+		return nil, errs.ErrCannotSetCreditLimitForNonCreditCardAccount
+	}
+
+	creditLimitForCreditCard := int64(0)
+
+	if accountModifyReq.CreditCardLimit != "" {
+		creditLimitForCreditCard, err = utils.StringToInt64(accountModifyReq.CreditCardLimit)
+
+		if err != nil || creditLimitForCreditCard <= 0 {
+			return nil, errs.ErrIncompleteOrIncorrectSubmission
+		}
+	}
+
 	uid := c.GetCurrentUid()
 	user, err := a.users.GetUserById(c, uid)
 
@@ -367,13 +441,10 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 
 	accountMap := a.accounts.GetAccountMapByList(accountAndSubAccounts)
 	mainAccount, exists := accountMap[accountModifyReq.Id]
+	subAccountBalances := make([]int64, len(accountModifyReq.SubAccounts))
 
 	if !exists {
 		return nil, errs.ErrAccountNotFound
-	}
-
-	if accountModifyReq.Currency != nil && mainAccount.Currency != *accountModifyReq.Currency {
-		return nil, errs.ErrNotSupportedChangeCurrency
 	}
 
 	if accountModifyReq.Balance != nil {
@@ -384,10 +455,16 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 		return nil, errs.ErrNotSupportedChangeBalanceTime
 	}
 
+	updateMainAccountCurrency := false
+
 	if mainAccount.Type == models.ACCOUNT_TYPE_SINGLE_ACCOUNT {
 		if len(accountModifyReq.SubAccounts) > 0 {
 			log.Warnf(c, "[accounts.AccountModifyHandler] account cannot have any sub-accounts")
 			return nil, errs.ErrAccountCannotHaveSubAccounts
+		}
+
+		if accountModifyReq.Currency != nil && mainAccount.Currency != *accountModifyReq.Currency {
+			return nil, errs.ErrNotSupportedChangeCurrency
 		}
 	} else if mainAccount.Type == models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS {
 		if len(accountModifyReq.SubAccounts) < 1 {
@@ -395,8 +472,23 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 			return nil, errs.ErrAccountHaveNoSubAccount
 		}
 
+		if accountModifyReq.Category == models.ACCOUNT_CATEGORY_CREDIT_CARD {
+			if ((accountModifyReq.Currency == nil && mainAccount.Currency == core.AccountCurrencyNotSetValue) || (accountModifyReq.Currency != nil && *accountModifyReq.Currency == core.AccountCurrencyNotSetValue)) && creditLimitForCreditCard > 0 {
+				log.Warnf(c, "[accounts.AccountModifyHandler] parent account must set currency when set credit limit")
+				return nil, errs.ErrMustSetParentAccountCurrencyWhenSetCreditLimit
+			} else if accountModifyReq.Currency != nil && mainAccount.Currency != *accountModifyReq.Currency {
+				log.Infof(c, "[accounts.AccountModifyHandler] will change parent account curreny from %s to %s", mainAccount.Currency, *accountModifyReq.Currency)
+				updateMainAccountCurrency = true
+			}
+		} else {
+			if accountModifyReq.Currency != nil && mainAccount.Currency != *accountModifyReq.Currency {
+				return nil, errs.ErrNotSupportedChangeCurrency
+			}
+		}
+
 		for i := 0; i < len(accountModifyReq.SubAccounts); i++ {
 			subAccountReq := accountModifyReq.SubAccounts[i]
+			subAccountBalances[i] = 0
 
 			if subAccountReq.Category != accountModifyReq.Category {
 				log.Warnf(c, "[accounts.AccountModifyHandler] category of sub-account#%d not equals to parent", i)
@@ -407,22 +499,29 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 				if subAccountReq.Currency == nil {
 					log.Warnf(c, "[accounts.AccountModifyHandler] sub-account#%d not set currency", i)
 					return nil, errs.ErrAccountCurrencyInvalid
-				} else if subAccountReq.Currency != nil && *subAccountReq.Currency == validators.ParentAccountCurrencyPlaceholder {
-					log.Warnf(c, "[accounts.AccountModifyHandler] sub-account#%d cannot set currency placeholder", i)
+				} else if subAccountReq.Currency != nil && *subAccountReq.Currency == core.AccountCurrencyNotSetValue {
+					log.Warnf(c, "[accounts.AccountModifyHandler] sub-account#%d must set currency", i)
 					return nil, errs.ErrAccountCurrencyInvalid
 				}
 
-				if subAccountReq.Balance == nil {
-					defaultBalance := int64(0)
-					subAccountReq.Balance = &defaultBalance
+				subAccountBalance := int64(0)
+
+				if subAccountReq.Balance != nil && *subAccountReq.Balance != "" {
+					subAccountBalance, err = utils.StringToInt64(*subAccountReq.Balance)
+
+					if err != nil {
+						return nil, errs.ErrIncompleteOrIncorrectSubmission
+					}
 				}
 
-				if *subAccountReq.Balance == 0 {
+				subAccountBalances[i] = subAccountBalance
+
+				if subAccountBalance == 0 {
 					defaultBalanceTime := int64(0)
 					subAccountReq.BalanceTime = &defaultBalanceTime
 				}
 
-				if *subAccountReq.Balance != 0 && (subAccountReq.BalanceTime == nil || *subAccountReq.BalanceTime <= 0) {
+				if subAccountBalance != 0 && (subAccountReq.BalanceTime == nil || *subAccountReq.BalanceTime <= 0) {
 					log.Warnf(c, "[accounts.AccountModifyHandler] sub-account#%d balance time is not set", i)
 					return nil, errs.ErrAccountBalanceTimeNotSet
 				}
@@ -450,6 +549,11 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 				log.Warnf(c, "[accounts.AccountModifyHandler] sub-account#%d cannot set statement date", i)
 				return nil, errs.ErrCannotSetStatementDateForSubAccount
 			}
+
+			if subAccountReq.CreditCardLimit != "" {
+				log.Warnf(c, "[accounts.AccountModifyHandler] sub-account#%d cannot set credit limit", i)
+				return nil, errs.ErrCannotSetCreditLimitForSubAccount
+			}
 		}
 	}
 
@@ -459,7 +563,7 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 	var toAddAccountBalanceTimes []int64
 	var toDeleteAccountIds []int64
 
-	toUpdateAccount, err := a.getToUpdateAccount(user, &accountModifyReq, mainAccount, false)
+	toUpdateAccount, err := a.getToUpdateAccount(user, &accountModifyReq, &creditLimitForCreditCard, mainAccount, false)
 
 	if err != nil {
 		return nil, errs.Or(err, errs.ErrOperationFailed)
@@ -503,7 +607,7 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 		if _, exists := accountMap[subAccountReq.Id]; !exists {
 			anythingUpdate = true
 			maxOrderId = maxOrderId + 1
-			newSubAccount := a.createNewSubAccountModelForModify(uid, mainAccount.Type, subAccountReq, maxOrderId)
+			newSubAccount := a.createNewSubAccountModelForModify(uid, mainAccount.Type, subAccountReq, subAccountBalances[i], maxOrderId)
 			toAddAccounts = append(toAddAccounts, newSubAccount)
 
 			if subAccountReq.BalanceTime != nil {
@@ -512,7 +616,7 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 				toAddAccountBalanceTimes = append(toAddAccountBalanceTimes, 0)
 			}
 		} else {
-			toUpdateSubAccount, err := a.getToUpdateAccount(user, subAccountReq, accountMap[subAccountReq.Id], true)
+			toUpdateSubAccount, err := a.getToUpdateAccount(user, subAccountReq, nil, accountMap[subAccountReq.Id], true)
 
 			if err != nil {
 				return nil, errs.Or(err, errs.ErrOperationFailed)
@@ -527,6 +631,13 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 
 	if !anythingUpdate {
 		return nil, errs.ErrNothingWillBeUpdated
+	}
+
+	iconTypeValid := a.isAccountsIconTypeValid(c, uid, slices.Concat(toAddAccounts, toUpdateAccounts))
+
+	if !iconTypeValid {
+		log.Warnf(c, "[accounts.AccountModifyHandler] icon type invalid for user \"uid:%d\"", uid)
+		return nil, errs.ErrAccountIconInvalid
 	}
 
 	if len(toAddAccounts) > 0 && a.CurrentConfig().EnableDuplicateSubmissionsCheck && accountModifyReq.ClientSessionId != "" {
@@ -565,7 +676,7 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 		}
 	}
 
-	err = a.accounts.ModifyAccounts(c, mainAccount, toUpdateAccounts, toAddAccounts, toAddAccountBalanceTimes, toDeleteAccountIds, clientTimezone)
+	err = a.accounts.ModifyAccounts(c, mainAccount, toUpdateAccounts, toAddAccounts, toAddAccountBalanceTimes, toDeleteAccountIds, updateMainAccountCurrency, clientTimezone)
 
 	if err != nil {
 		log.Errorf(c, "[accounts.AccountModifyHandler] failed to update account \"id:%d\" for user \"uid:%d\", because %s", accountModifyReq.Id, uid, err.Error())
@@ -586,7 +697,6 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 
 		account.Type = oldAccount.Type
 		account.ParentAccountId = oldAccount.ParentAccountId
-		account.Currency = oldAccount.Currency
 		account.Balance = oldAccount.Balance
 
 		accountResp := account.ToAccountInfoResponse()
@@ -826,11 +936,12 @@ func (a *AccountsApi) SubAccountDeleteHandler(c *core.WebContext) (any, *errs.Er
 	return true, nil
 }
 
-func (a *AccountsApi) createNewAccountModel(uid int64, accountCreateReq *models.AccountCreateRequest, isSubAccount bool, order int32) *models.Account {
+func (a *AccountsApi) createNewAccountModel(uid int64, accountCreateReq *models.AccountCreateRequest, balance int64, creditLimitForCreditCard *int64, isSubAccount bool, order int32) *models.Account {
 	accountExtend := &models.AccountExtend{}
 
 	if !isSubAccount && accountCreateReq.Category == models.ACCOUNT_CATEGORY_CREDIT_CARD {
 		accountExtend.CreditCardStatementDate = &accountCreateReq.CreditCardStatementDate
+		accountExtend.CreditCardLimit = creditLimitForCreditCard
 	}
 
 	return &models.Account{
@@ -841,15 +952,16 @@ func (a *AccountsApi) createNewAccountModel(uid int64, accountCreateReq *models.
 		Category:     accountCreateReq.Category,
 		Type:         accountCreateReq.Type,
 		Icon:         accountCreateReq.Icon,
+		IconType:     accountCreateReq.IconType,
 		Color:        accountCreateReq.Color,
 		Currency:     accountCreateReq.Currency,
-		Balance:      accountCreateReq.Balance,
+		Balance:      balance,
 		Comment:      accountCreateReq.Comment,
 		Extend:       accountExtend,
 	}
 }
 
-func (a *AccountsApi) createNewSubAccountModelForModify(uid int64, accountType models.AccountType, accountModifyReq *models.AccountModifyRequest, order int32) *models.Account {
+func (a *AccountsApi) createNewSubAccountModelForModify(uid int64, accountType models.AccountType, accountModifyReq *models.AccountModifyRequest, balance int64, order int32) *models.Account {
 	accountExtend := &models.AccountExtend{}
 
 	return &models.Account{
@@ -859,15 +971,16 @@ func (a *AccountsApi) createNewSubAccountModelForModify(uid int64, accountType m
 		Category:     accountModifyReq.Category,
 		Type:         accountType,
 		Icon:         accountModifyReq.Icon,
+		IconType:     accountModifyReq.IconType,
 		Color:        accountModifyReq.Color,
 		Currency:     *accountModifyReq.Currency,
-		Balance:      *accountModifyReq.Balance,
+		Balance:      balance,
 		Comment:      accountModifyReq.Comment,
 		Extend:       accountExtend,
 	}
 }
 
-func (a *AccountsApi) createSubAccountModels(uid int64, accountCreateReq *models.AccountCreateRequest) ([]*models.Account, []int64) {
+func (a *AccountsApi) createSubAccountModels(uid int64, accountCreateReq *models.AccountCreateRequest, balances []int64) ([]*models.Account, []int64) {
 	if len(accountCreateReq.SubAccounts) <= 0 {
 		return nil, nil
 	}
@@ -876,19 +989,20 @@ func (a *AccountsApi) createSubAccountModels(uid int64, accountCreateReq *models
 	childrenAccountBalanceTimes := make([]int64, len(accountCreateReq.SubAccounts))
 
 	for i := int32(0); i < int32(len(accountCreateReq.SubAccounts)); i++ {
-		childrenAccounts[i] = a.createNewAccountModel(uid, accountCreateReq.SubAccounts[i], true, i+1)
+		childrenAccounts[i] = a.createNewAccountModel(uid, accountCreateReq.SubAccounts[i], balances[i], nil, true, i+1)
 		childrenAccountBalanceTimes[i] = accountCreateReq.SubAccounts[i].BalanceTime
 	}
 
 	return childrenAccounts, childrenAccountBalanceTimes
 }
 
-func (a *AccountsApi) getToUpdateAccount(user *models.User, accountModifyReq *models.AccountModifyRequest, oldAccount *models.Account, isSubAccount bool) (*models.Account, error) {
+func (a *AccountsApi) getToUpdateAccount(user *models.User, accountModifyReq *models.AccountModifyRequest, creditLimitForCreditCard *int64, oldAccount *models.Account, isSubAccount bool) (*models.Account, error) {
 	newAccountExtend := &models.AccountExtend{}
 	newAccountExtend.LastReconciledTime = accountModifyReq.LastReconciledTime
 
 	if !isSubAccount && accountModifyReq.Category == models.ACCOUNT_CATEGORY_CREDIT_CARD {
 		newAccountExtend.CreditCardStatementDate = &accountModifyReq.CreditCardStatementDate
+		newAccountExtend.CreditCardLimit = creditLimitForCreditCard
 	}
 
 	newAccount := &models.Account{
@@ -898,16 +1012,24 @@ func (a *AccountsApi) getToUpdateAccount(user *models.User, accountModifyReq *mo
 		DisplayOrder: oldAccount.DisplayOrder,
 		Category:     accountModifyReq.Category,
 		Icon:         accountModifyReq.Icon,
+		IconType:     accountModifyReq.IconType,
 		Color:        accountModifyReq.Color,
+		Currency:     oldAccount.Currency,
 		Comment:      accountModifyReq.Comment,
 		Extend:       newAccountExtend,
 		Hidden:       accountModifyReq.Hidden,
 	}
 
+	if !isSubAccount && accountModifyReq.Currency != nil {
+		newAccount.Currency = *accountModifyReq.Currency
+	}
+
 	if newAccount.Name != oldAccount.Name ||
 		newAccount.Category != oldAccount.Category ||
 		newAccount.Icon != oldAccount.Icon ||
+		newAccount.IconType != oldAccount.IconType ||
 		newAccount.Color != oldAccount.Color ||
+		newAccount.Currency != oldAccount.Currency ||
 		newAccount.Comment != oldAccount.Comment ||
 		newAccount.Hidden != oldAccount.Hidden {
 		return newAccount, nil
@@ -928,6 +1050,12 @@ func (a *AccountsApi) getToUpdateAccount(user *models.User, accountModifyReq *mo
 	if (newAccountExtend.CreditCardStatementDate != nil && (oldAccountExtend == nil || oldAccountExtend.CreditCardStatementDate == nil)) ||
 		(newAccountExtend.CreditCardStatementDate == nil && oldAccountExtend != nil && oldAccountExtend.CreditCardStatementDate != nil) ||
 		(newAccountExtend.CreditCardStatementDate != nil && oldAccountExtend != nil && oldAccountExtend.CreditCardStatementDate != nil && *newAccountExtend.CreditCardStatementDate != *oldAccountExtend.CreditCardStatementDate) {
+		return newAccount, nil
+	}
+
+	if (newAccountExtend.CreditCardLimit != nil && (oldAccountExtend == nil || oldAccountExtend.CreditCardLimit == nil)) ||
+		(newAccountExtend.CreditCardLimit == nil && oldAccountExtend != nil && oldAccountExtend.CreditCardLimit != nil) ||
+		(newAccountExtend.CreditCardLimit != nil && oldAccountExtend != nil && oldAccountExtend.CreditCardLimit != nil && *newAccountExtend.CreditCardLimit != *oldAccountExtend.CreditCardLimit) {
 		return newAccount, nil
 	}
 
@@ -956,4 +1084,31 @@ func (a *AccountsApi) getToDeleteSubAccountIds(accountModifyReq *models.AccountM
 	}
 
 	return toDeleteAccountIds
+}
+
+func (a *AccountsApi) isAccountsIconTypeValid(c *core.WebContext, uid int64, accounts []*models.Account) bool {
+	iconIds := make([]int64, 0)
+
+	for _, account := range accounts {
+		if !account.IconType.IsValid() {
+			return false
+		}
+
+		if account.IconType == core.ICON_TYPE_USER_CUSTOM {
+			iconIds = append(iconIds, account.Icon)
+		}
+	}
+
+	if len(iconIds) < 1 {
+		return true
+	}
+
+	iconExists, err := a.icons.ExistsCustomIcons(c, uid, iconIds)
+
+	if err != nil {
+		log.Errorf(c, "[accounts.isAccountsIconTypeValid] failed to check custom icons for user \"uid:%d\", because %s", uid, err.Error())
+		return false
+	}
+
+	return iconExists
 }
