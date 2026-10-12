@@ -1,28 +1,27 @@
 <template>
-    <v-dialog class="finexy-dialog finexy-dialog--account" :width="account.type === AccountType.MultiSubAccounts.type ? 1000 : 800" :persistent="isAccountModified" v-model="showState">
-        <v-card class="pa-sm-1 pa-md-2">
-            <template #title>
-                <div class="d-flex align-center justify-center">
-                    <div class="d-flex align-center">
-                        <h4 class="text-h4">{{ tt(title) }}</h4>
-                        <v-progress-circular indeterminate size="22" class="ms-2" v-if="loading"></v-progress-circular>
-                    </div>
-                    <v-spacer/>
-                    <v-btn density="comfortable" color="default" variant="text" class="ms-2" :icon="true"
-                           :disabled="loading || submitting || account.type !== AccountType.MultiSubAccounts.type">
-                        <v-icon :icon="mdiDotsVertical" />
-                        <v-menu activator="parent">
-                            <v-list>
-                                <v-list-item :prepend-icon="mdiCreditCardPlusOutline"
-                                             :title="tt('Add Sub-account')"
-                                             @click="addSubAccount"></v-list-item>
-                            </v-list>
-                        </v-menu>
-                    </v-btn>
+    <v-dialog class="finexy-dialog finexy-dialog--account" width="1000" :persistent="isAccountModified" v-model="showState">
+        <two-column-dialog-layout :disabled="loading || submitting" :loading="loading"
+                                  :title="tt(title)" :cancel-button-title="tt('Cancel')"
+                                  @cancel="cancel">
+            <template #content-left-column>
+                <div class="px-4">
+                    <v-tabs class="v-tabs-pill" direction="vertical" :class="{ 'readonly': !!editAccountId }"
+                            :disabled="loading || submitting" v-model="account.type">
+                        <v-tab :key="accountType.type" :value="accountType.type" :disabled="!!editAccountId && accountType.type !== account.type"
+                               v-for="accountType in allAccountTypes">
+                            <span>{{ accountType.displayName }}</span>
+                        </v-tab>
+                    </v-tabs>
                 </div>
-            </template>
-            <v-card-text class="d-flex flex-column flex-md-row flex-grow-1 overflow-y-auto">
-                <div class="mb-4" v-if="account.type === AccountType.MultiSubAccounts.type">
+                <v-divider class="my-2"/>
+                <div class="px-4" v-if="account.type === AccountType.SingleAccount.type">
+                    <v-tabs direction="vertical" :disabled="loading || submitting" :model-value="-1">
+                        <v-tab :value="-1">
+                            <span>{{ tt('Basic Information') }}</span>
+                        </v-tab>
+                    </v-tabs>
+                </div>
+                <div class="px-4" v-else-if="account.type === AccountType.MultiSubAccounts.type">
                     <v-tabs direction="vertical" :disabled="loading || submitting" v-model="currentAccountIndex">
                         <v-tab :value="-1">
                             <span>{{ tt('Main Account') }}</span>
@@ -31,18 +30,24 @@
                             <v-tab :key="idx" :value="idx" v-for="(subAccount, idx) in subAccounts">
                                 <span>{{ tt('Sub Account') + ' #' + (idx + 1) }}</span>
                                 <v-btn class="ms-2" color="error" size="24" variant="text"
-                                       :icon="mdiDeleteOutline"
+                                       :aria-label="tt('Remove')" :icon="mdiDeleteOutline"
                                        @click="removeSubAccount(subAccount)"></v-btn>
                             </v-tab>
                         </template>
                     </v-tabs>
+                    <div class="w-100">
+                        <v-btn class="mt-2 w-100" color="primary" variant="text" density="comfortable"
+                               :disabled="loading || submitting" :prepend-icon="mdiPlus"
+                               @click="addSubAccount">{{ tt('Add Sub-account') }}</v-btn>
+                    </div>
                 </div>
+            </template>
 
+            <template #content-right-column>
                 <v-window class="d-flex flex-grow-1 disable-tab-transition w-100-window-container"
-                          :class="{ 'ms-md-5': account.type === AccountType.MultiSubAccounts.type }"
                           v-model="activeTab">
                     <v-window-item value="account">
-                        <v-form class="mt-2">
+                        <v-form class="my-4">
                             <v-row>
                                 <v-col cols="12" v-if="!editAccountId && currentAccountIndex < 0">
                                     <div class="text-body-2 font-weight-medium mb-2">
@@ -57,6 +62,17 @@
                                     </div>
                                     <div class="text-caption text-medium-emphasis mt-2">选择后仍可修改账户类别、名称和当前余额。</div>
                                 </v-col>
+                                <v-col cols="12" md="12">
+                                    <v-text-field
+                                        type="text"
+                                        autocomplete="off"
+                                        persistent-placeholder
+                                        :disabled="loading || submitting"
+                                        :label="currentAccountIndex < 0 ? tt('Account Name') : tt('Sub-account Name')"
+                                        :placeholder="currentAccountIndex < 0 ? tt('Your account name') : tt('Your sub-account name')"
+                                        v-model="selectedAccount.name"
+                                    />
+                                </v-col>
                                 <v-col cols="12" md="12" v-if="account.type === AccountType.SingleAccount.type || currentAccountIndex < 0">
                                     <v-select
                                         item-title="displayName"
@@ -69,15 +85,15 @@
                                         :no-data-text="tt('No results')"
                                         v-model="selectedAccount.category"
                                     >
-                                        <template #item="{ props, item }">
-                                            <v-list-item :value="item.value" v-bind="props">
+                                        <template #item="{ props, internalItem }">
+                                            <v-list-item :value="internalItem.value" v-bind="props">
                                                 <template #title>
                                                     <v-list-item-title>
                                                         <div class="d-flex align-center">
                                                             <ItemIcon icon-type="account"
-                                                                      :icon-id="item.raw.defaultAccountIconId"
-                                                                      v-if="item.raw" />
-                                                            <span class="ms-2">{{ item.title }}</span>
+                                                                      :icon-id="internalItem.raw.defaultAccountIconId"
+                                                                      v-if="internalItem.raw" />
+                                                            <span class="ms-2">{{ internalItem.title }}</span>
                                                         </div>
                                                     </v-list-item-title>
                                                 </template>
@@ -85,50 +101,46 @@
                                         </template>
                                     </v-select>
                                 </v-col>
-                                <v-col cols="12" md="12" v-if="account.type === AccountType.SingleAccount.type || currentAccountIndex < 0">
-                                    <v-select
-                                        item-title="displayName"
-                                        item-value="type"
-                                        persistent-placeholder
-                                        :disabled="loading || submitting || !!editAccountId"
-                                        :label="tt('Account Type')"
-                                        :placeholder="tt('Account Type')"
-                                        :items="allAccountTypes"
-                                        :no-data-text="tt('No results')"
-                                        v-model="selectedAccount.type"
-                                    />
-                                </v-col>
-                                <v-col cols="12" md="12">
-                                    <v-text-field
-                                        type="text"
-                                        persistent-placeholder
-                                        :disabled="loading || submitting"
-                                        :label="currentAccountIndex < 0 ? tt('Account Name') : tt('Sub-account Name')"
-                                        :placeholder="currentAccountIndex < 0 ? tt('Your account name') : tt('Your sub-account name')"
-                                        v-model="selectedAccount.name"
-                                    />
-                                </v-col>
                                 <v-col cols="12" md="6">
-                                    <icon-select icon-type="account"
-                                                 :all-icon-infos="ALL_ACCOUNT_ICONS"
+                                    <icon-select type="account"
+                                                 :all-system-icon-infos="ALL_ACCOUNT_ICONS"
                                                  :label="currentAccountIndex < 0 ? tt('Account Icon') : tt('Sub-account Icon')"
                                                  :color="selectedAccount.color"
                                                  :disabled="loading || submitting"
+                                                 v-model:icon-type="selectedAccount.iconType"
                                                  v-model="selectedAccount.icon" />
                                 </v-col>
                                 <v-col cols="12" md="6">
-                                    <color-select :all-color-infos="ALL_ACCOUNT_COLORS"
+                                    <color-select :all-system-color-infos="ALL_ACCOUNT_COLORS"
                                                   :label="currentAccountIndex < 0 ? tt('Account Color') : tt('Sub-account Color')"
                                                   :disabled="loading || submitting"
                                                   v-model="selectedAccount.color" />
                                 </v-col>
-                                <v-col cols="12" :md="currentAccountIndex < 0 && isAccountSupportCreditCardStatementDate ? 6 : 12" v-if="account.type === AccountType.SingleAccount.type || currentAccountIndex >= 0">
-                                    <currency-select :disabled="loading || submitting || (!!editAccountId && !isNewAccount(selectedAccount))"
-                                                     :label="tt('Currency')"
-                                                     :placeholder="tt('Currency')"
+                                <v-col cols="12" md="12" v-if="account.type === AccountType.SingleAccount.type || currentAccountIndex >= 0 || (account.type === AccountType.MultiSubAccounts.type && account.category === AccountCategory.CreditCard.type && currentAccountIndex < 0)">
+                                    <currency-select :disabled="loading || submitting || (!!editAccountId && !isNewAccount(selectedAccount) && !(account.type === AccountType.MultiSubAccounts.type && account.category === AccountCategory.CreditCard.type && currentAccountIndex < 0))"
+                                                     :label="(account.type === AccountType.MultiSubAccounts.type && account.category === AccountCategory.CreditCard.type && currentAccountIndex < 0) ? tt('Default Currency') : tt('Currency')"
+                                                     :placeholder="(account.type === AccountType.MultiSubAccounts.type && account.category === AccountCategory.CreditCard.type && currentAccountIndex < 0) ? tt('Default Currency') : tt('Currency')"
+                                                     :with-not-set="account.type === AccountType.MultiSubAccounts.type && account.category === AccountCategory.CreditCard.type && currentAccountIndex < 0"
                                                      v-model="selectedAccount.currency" />
                                 </v-col>
-                                <v-col cols="12" :md="account.type === AccountType.SingleAccount.type || currentAccountIndex >= 0 ? 6 : 12" v-if="currentAccountIndex < 0 && isAccountSupportCreditCardStatementDate">
+                                <v-col cols="12" md="6" v-if="currentAccountIndex < 0 && account.category === AccountCategory.CreditCard.type">
+                                    <amount-input :disabled="loading || submitting"
+                                                  :persistent-placeholder="true"
+                                                  :currency="account.currency"
+                                                  :show-currency="true"
+                                                  :label="tt('Credit Limit')"
+                                                  :placeholder="tt('Credit Limit')"
+                                                  v-model="account.numericCreditCardLimit"
+                                                  v-if="account.currency && account.currency !== ACCOUNT_CURRENCY_NOT_SET_VALUE" />
+                                    <v-text-field disabled
+                                                  persistent-placeholder
+                                                  type="text"
+                                                  :label="tt('Credit Limit')"
+                                                  :placeholder="tt('Credit Limit')"
+                                                  :model-value="getAccountCreditCardCreditLimitDisplayValue(account.numericCreditCardLimit, account.currency)"
+                                                  v-else-if="!account.currency || account.currency === ACCOUNT_CURRENCY_NOT_SET_VALUE" />
+                                </v-col>
+                                <v-col cols="12" md="6" v-if="currentAccountIndex < 0 && account.category === AccountCategory.CreditCard.type">
                                     <v-autocomplete
                                         item-title="displayName"
                                         item-value="type"
@@ -142,7 +154,7 @@
                                         v-model="account.creditCardStatementDate"
                                     ></v-autocomplete>
                                 </v-col>
-                                <v-col cols="12" :md="((canShowBalanceTime && selectedAccount.balance) || canShowLastReconciledTime) ? 6 : 12"
+                                <v-col cols="12" :md="((canShowBalanceTime && selectedAccount.numericBalance) || canShowLastReconciledTime) ? 6 : 12"
                                        v-if="account.type === AccountType.SingleAccount.type || currentAccountIndex >= 0">
                                     <amount-input :disabled="loading || submitting || (!!editAccountId && !isNewAccount(selectedAccount))"
                                                   :persistent-placeholder="true"
@@ -151,9 +163,9 @@
                                                   :flip-negative="account.isLiability"
                                                   :label="accountAmountTitle"
                                                   :placeholder="accountAmountTitle"
-                                                  v-model="selectedAccount.balance"/>
+                                                  v-model="selectedAccount.numericBalance"/>
                                 </v-col>
-                                <v-col cols="12" md="6" v-show="selectedAccount.balance" v-if="canShowBalanceTime">
+                                <v-col cols="12" md="6" v-show="selectedAccount.numericBalance" v-if="canShowBalanceTime">
                                     <date-time-select
                                         :disabled="loading || submitting"
                                         :label="tt('Balance Time')"
@@ -177,6 +189,7 @@
                                 <v-col cols="12" md="12">
                                     <v-textarea
                                         type="text"
+                                        autocomplete="off"
                                         persistent-placeholder
                                         rows="3"
                                         :disabled="loading || submitting"
@@ -185,7 +198,7 @@
                                         v-model="selectedAccount.comment"
                                     />
                                 </v-col>
-                                <v-col class="py-0" cols="12" md="12" v-if="editAccountId && !isNewAccount(selectedAccount)">
+                                <v-col class="py-0 my-n2" cols="12" md="12" v-if="editAccountId && !isNewAccount(selectedAccount)">
                                     <v-switch :disabled="loading || submitting"
                                               :label="tt('Visible')" v-model="selectedAccount.visible"/>
                                 </v-col>
@@ -193,24 +206,22 @@
                         </v-form>
                     </v-window-item>
                 </v-window>
-            </v-card-text>
-            <v-card-text>
-                <div class="w-100 d-flex justify-center flex-wrap mt-sm-1 mt-md-2 gap-4">
-                    <v-tooltip :disabled="!inputIsEmpty" :text="inputEmptyProblemMessage ? tt(inputEmptyProblemMessage) : ''">
-                        <template v-slot:activator="{ props }">
-                            <div v-bind="props" class="d-inline-block">
-                                <v-btn :disabled="inputIsEmpty || loading || submitting" @click="save">
-                                    {{ tt(saveButtonTitle) }}
-                                    <v-progress-circular indeterminate size="22" class="ms-2" v-if="submitting"></v-progress-circular>
-                                </v-btn>
-                            </div>
-                        </template>
-                    </v-tooltip>
-                    <v-btn color="secondary" variant="tonal"
-                           :disabled="loading || submitting" @click="cancel">{{ tt('Cancel') }}</v-btn>
-                </div>
-            </v-card-text>
-        </v-card>
+            </template>
+
+            <template #footer>
+                <v-spacer/>
+                <v-tooltip :disabled="!inputIsEmpty" :text="inputEmptyProblemMessage ? tt(inputEmptyProblemMessage) : ''">
+                    <template v-slot:activator="{ props }">
+                        <div v-bind="props" class="d-inline-block">
+                            <v-btn :disabled="inputIsEmpty || loading || submitting" @click="save">
+                                {{ tt(saveButtonTitle) }}
+                                <v-progress-circular indeterminate size="22" class="ms-2" v-if="submitting"></v-progress-circular>
+                            </v-btn>
+                        </div>
+                    </template>
+                </v-tooltip>
+            </template>
+        </two-column-dialog-layout>
     </v-dialog>
 
     <confirm-dialog ref="confirmDialog"/>
@@ -233,15 +244,16 @@ import { itemAndIndex } from '@/core/base.ts';
 import { AccountType, AccountCategory } from '@/core/account.ts';
 import { ALL_ACCOUNT_ICONS } from '@/consts/icon.ts';
 import { ALL_ACCOUNT_COLORS } from '@/consts/color.ts';
+import { ACCOUNT_CURRENCY_NOT_SET_VALUE } from '@/consts/currency.ts';
+
 import { Account } from '@/models/account.ts';
 
-import { isNumber } from '@/lib/common.ts';
+import { isNumber, isEquals } from '@/lib/common.ts';
 import { getCurrentUnixTime } from '@/lib/datetime.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
 
 import {
-    mdiDotsVertical,
-    mdiCreditCardPlusOutline,
+    mdiPlus,
     mdiDeleteOutline,
     mdiLightningBoltOutline
 } from '@mdi/js';
@@ -275,9 +287,9 @@ const {
     allAccountCategories,
     allAccountTypes,
     allAvailableMonthDays,
-    isAccountSupportCreditCardStatementDate,
     getCurrentUnixTimeForNewAccount,
     getDefaultTimezoneOffsetMinutes,
+    getAccountCreditCardCreditLimitDisplayValue,
     updateAccountBalanceTime,
     updateAccountLastReconciledTime,
     isNewAccount,
@@ -291,8 +303,13 @@ const accountsStore = useAccountsStore();
 const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
 
+let resolveFunc: ((value: AccountEditResponse) => void) | null = null;
+let rejectFunc: ((reason?: unknown) => void) | null = null;
+
 const showState = ref<boolean>(false);
 const activeTab = ref<string>('account');
+const initAccountCategory = ref<AccountCategory>(defaultAccountCategory);
+const initAccount = ref<Account | null>(null);
 const currentAccountIndex = ref<number>(-1);
 
 const canShowBalanceTime = computed<boolean>(() => (!editAccountId.value || isNewAccount(selectedAccount.value)) && (account.value.type === AccountType.SingleAccount.type || currentAccountIndex.value >= 0));
@@ -332,23 +349,24 @@ function applyAccountPreset(preset: AccountPreset): void {
 }
 
 const isAccountModified = computed<boolean>(() => {
-    if (!editAccountId.value) {
-        return !account.value.equals(Account.createNewAccount(defaultAccountCategory, userStore.currentUserDefaultCurrency, account.value.balanceTime ?? getCurrentUnixTimeForNewAccount()));
-    } else {
-        return true;
+    if (!editAccountId.value) { // Add
+        return !!initAccount.value && !isEquals(account.value.toCreateRequest(clientSessionId.value, subAccounts.value), initAccount.value.toCreateRequest(clientSessionId.value, initAccount.value.subAccounts));
+    } else { // Edit
+        return !!initAccount.value && !isEquals(account.value.toModifyRequest(clientSessionId.value, subAccounts.value), initAccount.value.toModifyRequest(clientSessionId.value, initAccount.value.subAccounts));
     }
 });
-
-let resolveFunc: ((value: AccountEditResponse) => void) | null = null;
-let rejectFunc: ((reason?: unknown) => void) | null = null;
 
 function open(options?: { id?: string, currentAccount?: Account, category?: number }): Promise<AccountEditResponse> {
     showState.value = true;
     loading.value = true;
     submitting.value = false;
 
-    const newAccount = Account.createNewAccount(defaultAccountCategory, userStore.currentUserDefaultCurrency, getCurrentUnixTimeForNewAccount());
-    account.value.fillFrom(newAccount);
+    if (isNumber(options?.category) && AccountCategory.valueOf(options.category)) {
+        initAccountCategory.value = AccountCategory.valueOf(options.category)!;
+    }
+
+    initAccount.value = Account.createNewAccount(initAccountCategory.value, userStore.currentUserDefaultCurrency, getCurrentUnixTimeForNewAccount());
+    account.value.fillFrom(initAccount.value);
     subAccounts.value = [];
     currentAccountIndex.value = -1;
     clientSessionId.value = generateRandomUUID();
@@ -363,6 +381,7 @@ function open(options?: { id?: string, currentAccount?: Account, category?: numb
             accountId: editAccountId.value
         }).then(response => {
             setAccount(response);
+            initAccount.value = Account.of(response);
             loading.value = false;
         }).catch(error => {
             loading.value = false;
@@ -376,8 +395,11 @@ function open(options?: { id?: string, currentAccount?: Account, category?: numb
         });
     } else {
         if (options && isNumber(options.category)) {
-            account.value.category = options.category;
-            account.value.setSuitableIcon(1, options.category);
+            initAccount.value.category = options.category;
+            initAccount.value.setSuitableIcon(1, options.category);
+
+            account.value.category = initAccount.value.category;
+            account.value.icon = initAccount.value.icon;
         }
 
         editAccountId.value = null;
@@ -448,9 +470,13 @@ function onShowDateTimeError(error: string): void {
     snackbar.value?.showError(error);
 }
 
-watch(() => account.value.type, () => {
+watch(() => account.value.type, (newValue) => {
     if (subAccounts.value.length < 1) {
         addSubAccount();
+    }
+
+    if (newValue === AccountType.SingleAccount.type) {
+        currentAccountIndex.value = -1;
     }
 });
 

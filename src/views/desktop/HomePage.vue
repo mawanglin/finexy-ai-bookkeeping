@@ -206,7 +206,7 @@
                 <button class="drawer-close" type="button" aria-label="关闭账户详情" @click="closeWalletDetails">×</button>
                 <span class="drawer-mark" :class="currencyFlag(selectedWallet.currency)">{{ selectedWallet.name.slice(0,1) }}</span>
                 <small>账户详情</small><h2 id="wallet-detail-title">{{ selectedWallet.name }}</h2><p>{{ walletCategoryLabel(selectedWallet.category) }} · {{ selectedWallet.currency }}</p>
-                <strong class="drawer-balance">{{ showAmountInHomePage?formatWalletBalance(selectedWallet.balance,selectedWallet.currency):'******' }}</strong>
+                <strong class="drawer-balance">{{ showAmountInHomePage?formatWalletBalance(selectedWallet.numericBalance,selectedWallet.currency):'******' }}</strong>
                 <dl><div><dt>账户状态</dt><dd><i :class="selectedWallet.hidden?'off':'ok'"></i>{{ selectedWallet.hidden?'已停用':'正常' }}</dd></div><div><dt>币种</dt><dd>{{ selectedWallet.currency }}</dd></div><div><dt>账户说明</dt><dd>{{ selectedWallet.comment||'暂无说明' }}</dd></div></dl>
                 <div class="drawer-actions"><button class="btn-dark" type="button" @click="openQuickTransaction(TransactionType.Expense,selectedWallet)">记录支出</button><button class="btn-light" type="button" @click="openQuickTransaction(TransactionType.Income,selectedWallet)">记录收入</button></div>
                 <button class="drawer-edit" type="button" @click="openAccountEditor(selectedWallet)"><v-icon :icon="mdiPencilOutline" size="16"/>编辑账户</button>
@@ -243,6 +243,7 @@ import { useUserStore } from '@/stores/user.ts';
 import { useLedgersStore } from '@/stores/ledger.ts';
 import { useSavingsGoalsStore } from '@/stores/savingsGoal.ts';
 import { DefaultLedgerId } from '@/models/ledger.ts';
+import { parseBigDecimal } from '@/lib/numeral.ts';
 import { AccountCategory } from '@/core/account.ts';
 import type { Account } from '@/models/account.ts';
 import { isUserLogined, isUserUnlocked } from '@/lib/userstate.ts';
@@ -372,12 +373,12 @@ const balanceDisplayAmount = computed<string>(() => {
 
     if (balanceCurrency.value === defaultCurrency.value) {
         return familyLedgerSelected.value
-            ? formatAmountToLocalizedNumeralsWithCurrency(walletAccounts.value.reduce((sum, account) => sum + account.balance, 0), defaultCurrency.value)
+            ? formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(walletAccounts.value.reduce((sum, account) => sum + account.numericBalance, 0)), defaultCurrency.value)
             : netAssets.value;
     }
 
-    const currencyBalance = walletAccounts.value.filter(account => account.currency === balanceCurrency.value).reduce((total, account) => total + account.balance, 0);
-    return formatAmountToLocalizedNumeralsWithCurrency(currencyBalance, balanceCurrency.value);
+    const currencyBalance = walletAccounts.value.filter(account => account.currency === balanceCurrency.value).reduce((total, account) => total + account.numericBalance, 0);
+    return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(currencyBalance), balanceCurrency.value);
 });
 const balanceAccountSummary = computed<string>(() => {
     const count = balanceCurrency.value === defaultCurrency.value ? walletAccounts.value.length : walletAccounts.value.filter(account => account.currency === balanceCurrency.value).length;
@@ -393,11 +394,11 @@ const currentMonthIncome = computed<number>(() => monthlyTransactions.value.filt
 const currentMonthExpense = computed<number>(() => monthlyTransactions.value.filter(transaction => transaction.type === TransactionType.Expense).reduce((sum, transaction) => sum + transaction.sourceAmount, 0));
 const currentMonthNet = computed<number>(() => currentMonthIncome.value - currentMonthExpense.value);
 const budgetPercentage = computed<number>(() => monthlyBudget.value ? currentMonthExpense.value * 100 / monthlyBudget.value.amount : 0);
-const thisMonthNet = computed<string>(() => formatAmountToLocalizedNumeralsWithCurrency(currentMonthNet.value, defaultCurrency.value));
-const thisMonthIncome = computed<string>(() => formatAmountToLocalizedNumeralsWithCurrency(currentMonthIncome.value, defaultCurrency.value));
-const thisMonthExpense = computed<string>(() => formatAmountToLocalizedNumeralsWithCurrency(currentMonthExpense.value, defaultCurrency.value));
+const thisMonthNet = computed<string>(() => formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(currentMonthNet.value), defaultCurrency.value));
+const thisMonthIncome = computed<string>(() => formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(currentMonthIncome.value), defaultCurrency.value));
+const thisMonthExpense = computed<string>(() => formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(currentMonthExpense.value), defaultCurrency.value));
 const homeTotalAssets = computed<string>(() => familyLedgerSelected.value
-    ? formatAmountToLocalizedNumeralsWithCurrency(walletAccounts.value.reduce((sum, account) => sum + account.balance, 0), defaultCurrency.value)
+    ? formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(walletAccounts.value.reduce((sum, account) => sum + account.numericBalance, 0)), defaultCurrency.value)
     : totalAssets.value);
 
 const overviewMonthKeys = [
@@ -416,8 +417,8 @@ const chartAmounts = computed(() => overviewMonthKeys.map((key, index) => {
     const item = familyLedgerSelected.value ? undefined : transactionOverview.value[key];
     return {
         month: `${date.getMonth() + 1}月`,
-        incomeAmount: item?.incomeAmount ?? 0,
-        expenseAmount: item?.expenseAmount ?? 0
+        incomeAmount: item?.incomeAmount?.toDoubleNumber() ?? 0,
+        expenseAmount: item?.expenseAmount?.toDoubleNumber() ?? 0
     };
 }));
 const chartMaximum = computed(() => Math.max(0, ...chartAmounts.value.flatMap(item => [item.incomeAmount, item.expenseAmount])));
@@ -457,7 +458,7 @@ const displayWallets = computed(() => {
         id: account.id,
         flag: currencyFlag(account.currency),
         code: account.currency || 'CNY',
-        amount: formatWalletBalance(account.balance, account.currency),
+        amount: formatWalletBalance(account.numericBalance, account.currency),
         name: account.name,
         note: walletCategoryLabel(account.category),
         active: !account.hidden,
@@ -466,7 +467,7 @@ const displayWallets = computed(() => {
 });
 
 function formatBudgetMoney(value: number): string {
-    return formatAmountToLocalizedNumeralsWithCurrency(value, defaultCurrency.value);
+    return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(value), defaultCurrency.value);
 }
 
 function currencyFlag(currency: string): string {
@@ -531,7 +532,7 @@ function transactionToActivity(transaction: Transaction): ActivityRow {
     const type: ActivityRow['type'] = isModifyBalance ? 'balance' : isIncome ? 'income' : isTransfer ? 'transfer' : 'expense';
     const typeLabel = isModifyBalance ? '余额调整' : isIncome ? '收入' : isTransfer ? '转账' : '支出';
     const currency = transaction.sourceAccount?.currency || userStore.currentUserDefaultCurrency;
-    const amount = formatAmountToLocalizedNumeralsWithCurrency(isModifyBalance ? Math.abs(transaction.sourceAmount) : transaction.sourceAmount, currency);
+    const amount = formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(isModifyBalance ? Math.abs(transaction.sourceAmount) : transaction.sourceAmount), currency);
     const prefix = isModifyBalance ? (transaction.sourceAmount >= 0 ? '+' : '-') : isIncome ? '+' : isTransfer ? '↔ ' : '-';
     const date = new Date(transaction.time * 1000);
     const title = transaction.comment || transaction.category?.name || typeLabel;
@@ -579,7 +580,7 @@ function viewActivityInList(row: ActivityRow): void {
 }
 
 function formatWalletBalance(balance: number, currency: string): string {
-    return formatAmountToLocalizedNumeralsWithCurrency(balance, currency);
+    return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(balance), currency);
 }
 
 function walletCategoryLabel(category: number): string {
@@ -663,7 +664,7 @@ async function reload(force: boolean, showRefreshMessage = force): Promise<void>
             })
         ];
         if (!familyLedgerSelected.value) {
-            promises.push(overviewStore.loadTransactionOverview({ force, loadLast11Months: true }));
+            promises.push(overviewStore.loadTransactionOverview({ force, months: 12 }));
             promises.push(monthlyBudgetStore.load(currentYearMonth.value, force));
             promises.push(aiReviewItemsStore.load());
         }

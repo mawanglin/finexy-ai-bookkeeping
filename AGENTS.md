@@ -295,6 +295,20 @@ docker stop finexy-android-e2e
 
 22. **README 与 Web 首页内容更新（2026-09-21）**：根 README 改为以账本为中心的产品说明，补齐多账本切换、成员邀请与角色、存钱目标、周期待确认、AI/OCR 可选能力、平台矩阵和四步使用路径；下载、Docker、源码构建与协作入口继续保留。Web 首页开场改为按时间问候当前用户，并明确所有信息属于当前账本；四项指标统一为本月结余、本月支出、本月收入和账户余额，图表文案改为近八个月收入/支出，待办说明明确周期交易到期后需要确认且不会自动改变余额。月度指标同时修复为从完整月度返回集汇总，近期活动仍只展示前五条，不再把五条活动误当整月口径。`npm run check` 通过（11 个测试文件、38484 项与生产构建）。浏览器在无卷隔离容器 `finexy-readme-home-e2e` 的随机账号中实测 1440×1000 无横向溢出，并替换 `docs/screenshots/finexy-dashboard.png`；空白隔离服务因未配置汇率产生既有汇率初始化错误，不影响首页数据请求、内容或截图。临时容器、Vite 和 Playwright 会话均已清理；为验收启动的 Docker Desktop 已恢复关闭。本次未部署 8080，未操作 Android 模拟器，主账本 4 条状态未重测也未改动。
 
+### 上游同步（2026-10-12，ezBookkeeping v1.6.0 → main 9cb3a08e，含 v2.0.1）
+
+分支 `sync/upstream-20261012` 合并上游 301 个提交，Finexy 版本号升至 2.0.0。已新增 `upstream` 远端（`--no-tags`，避免与 Finexy 自有 v1.7–v1.9 标签冲突）。关键决策与兼容要求：
+
+1. **API 合同变化（破坏性）**：上游把账户 `balance`、`creditCardLimit`、统计 `amount`、概览 `incomeAmount`/`expenseAmount`、对账单期初/期末余额改为最小货币单位的十进制字符串；非转账流水不再返回 `destinationAmount`。Android 已改为以字符串提交账户余额（`AccountDraft.toCreatePayload`），读取侧 `optLong/getLong` 可兼容字符串。**旧版 Android 新建账户会被新服务端以 400 拒绝**，部署服务端前必须先发布新版 Android。Finexy 自有接口（账本概览余额、存钱资金记录）仍为整数。
+2. **编号冲突**：上游新增账户错误码 25–29 保持上游编号，Finexy 的账本迁移错误码改为 30–32；上游 `NormalSubcategoryUserCustomIcon` 改为 28（Finexy 20–27 保持不变）；UUID 4 位类型槽已被 Finexy 用满，`UUID_TYPE_CUSTOM_ICON` 与图片共用槽 8（只共享每秒序列计数器，ID 仍唯一）。
+3. **配置段 `llm` → `ai`**：加载优先级为 `EBK_AI_*` 环境变量 > 旧 `EBK_LLM_*` 环境变量 > ini `[ai]`，现有 compose/NAS/fnOS 配置无需修改。模型供应商段（`llm_text_recognition` 等）名称未变。
+4. **周期待确认**：cron 改用上游 `createTransactionByScheduledTransactionTemplate` 计算发生时间（修复夏令时 #566），结果仍只进入待确认队列；快照 `utcOffset` 取发生时刻的实际偏移（`EnqueueWithUtcOffset`）。
+5. **桌面 Web**：Finexy 路由、`MainLayout`、`FinexyWorkspacePage`、首页、登录/注册页保持 Finexy 版本；上游删除的旧 Materio 模板不再使用，改为上游新样式 `styles/desktop/index.scss` 之上叠加 `styles/desktop/finexy.scss`（原 global.scss 中 Finexy 追加部分）。上游新增的桌面页面（设置页拆分、自定义图标、总览布局编辑器）暂未挂入 Finexy 路由。共享弹窗（记账、账户、分类）采用上游新布局并保留 Finexy 改动（账本上下文、转账方向、账户预设）。上游 `HomePageBase.ts` 已改名拆分，Finexy 桌面首页使用的版本作为 Finexy 自有文件保留并改用 BigDecimal。
+6. **移动 Web**：首页采用上游新的组件化总览，顶部保留 Finexy 钱包/引导卡片；Finexy 移动端追加样式移至 `styles/mobile/finexy.scss`。
+7. **导入规则/映射文件**：仍写出 `Finexy*` 根字段，解析时兼容上游 `ezBookkeeping*` 根字段。
+
+验证：`go test ./...`（CGO 开/关各 44 包）通过，含 CGO SQLite 周期待确认、账本/家庭/存钱全部专项；`npm run check` 通过（18 文件、38632 项与生产构建）；Android `assembleDebug`/`assembleDebugAndroidTest`/`lintDebug` 通过（Linux 临时 SDK）。一次性本地服务（临时目录 SQLite、端口 18096/18097，已停止删除）上用真实 Chrome 走通登录→首页→添加账户（字符串余额）→记账→余额与月度汇总正确，并与合并前前端逐页对比截图，无控制台错误。**未完成**：Android instrumentation 与隔离 Docker E2E（本次环境无模拟器/Docker），桌面深浅主题与读屏人工验收；8080 运行服务未部署。
+
 ### 阶段 E
 
 完成 TalkBack、最大字体、多尺寸/横屏、主题语义色、导航一致性；将 lint、Room migration、关键 instrumentation 和发布签名验证纳入 CI；生成并验证 release APK/AAB。生物识别成功路径需在已录入指纹的设备上人工验收。

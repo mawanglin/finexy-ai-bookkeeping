@@ -1462,7 +1462,7 @@
                             <footer>
                                 <small>账户余额</small>
                                 <span v-if="managedLedgerOverview.balances.length">
-                                    <b v-for="balance in managedLedgerOverview.balances" :key="balance.currency">{{ formatAmountToLocalizedNumeralsWithCurrency(balance.balance, balance.currency) }}</b>
+                                    <b v-for="balance in managedLedgerOverview.balances" :key="balance.currency">{{ formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(balance.balance), balance.currency) }}</b>
                                 </span>
                                 <span v-else>暂无可用账户</span>
                             </footer>
@@ -2387,6 +2387,7 @@ import { getCnyValueForCurrency } from "@/lib/exchange_rate.ts";
 import { AMOUNT_FACTOR } from "@/consts/numeral.ts";
 import { getCurrentUnixTime } from "@/lib/datetime.ts";
 import services from "@/lib/services.ts";
+import { parseBigDecimal } from "@/lib/numeral.ts";
 import logger from "@/lib/logger.ts";
 import { getClientDisplayVersion, getClientBuildTime } from "@/lib/version.ts";
 import {
@@ -3038,7 +3039,7 @@ const transactions = ref<Item[]>([]);
 const ledgerReportTrends = ref<Array<{
     year: number;
     month: number;
-    items: Array<{ categoryId: string; amount: number }>;
+    items: Array<{ categoryId: string; amount: string | number }>;
 }>>([]);
 const currentLedgerMonthTotals = computed(() => {
     let income = 0;
@@ -3058,7 +3059,7 @@ const accounts = computed<Item[]>(() => {
             title: account.name,
             meta: `${account.currency} · ${account.comment || "资金账户"}`,
             amount: formatAmountToLocalizedNumeralsWithCurrency(
-                account.balance,
+                parseBigDecimal(account.balance),
                 account.currency,
             ),
             status: account.hidden ? "已隐藏" : "正常",
@@ -3093,7 +3094,7 @@ const schedules = computed(() => {
             meta: item.comment || "周期交易",
             frequency: scheduleFrequencyLabel(item),
             amount: formatAmountToLocalizedNumeralsWithCurrency(
-                item.sourceAmount,
+                parseBigDecimal(item.sourceAmount),
                 item.sourceAccount?.currency || userStore.currentUserDefaultCurrency,
             ),
             enabled: !item.hidden && item.scheduledFrequencyType !== ScheduledTemplateFrequencyType.Disabled.type,
@@ -3145,7 +3146,7 @@ const templates = computed(() => {
             title: item.name,
             meta: item.comment || "交易模板",
             amount: formatAmountToLocalizedNumeralsWithCurrency(
-                item.sourceAmount,
+                parseBigDecimal(item.sourceAmount),
                 item.sourceAccount?.currency || userStore.currentUserDefaultCurrency,
             ),
             uses: 0,
@@ -3563,8 +3564,8 @@ const reportDataset = computed(() => {
         let expenseAmount = 0;
         for (const item of row?.items || []) {
             const category = categoriesStore.allTransactionCategoriesMap[item.categoryId];
-            if (category?.type === CategoryType.Income) incomeAmount += item.amount;
-            else if (category?.type === CategoryType.Expense) expenseAmount += item.amount;
+            if (category?.type === CategoryType.Income) incomeAmount += Number(item.amount) || 0;
+            else if (category?.type === CategoryType.Expense) expenseAmount += Number(item.amount) || 0;
         }
         return {
             label: `${date.getMonth() + 1}月`,
@@ -3633,13 +3634,13 @@ function showError(error: unknown) {
 }
 function formatAssetMoney(value: number) {
     return formatAmountToLocalizedNumeralsWithCurrency(
-        Math.round(Number.isFinite(value) ? value : 0),
+        parseBigDecimal(Math.round(Number.isFinite(value) ? value : 0)),
         "CNY",
     );
 }
 function formatBookkeepingMoney(value: number) {
     return formatAmountToLocalizedNumeralsWithCurrency(
-        Math.trunc(Number.isFinite(value) ? value : 0),
+        parseBigDecimal(Math.trunc(Number.isFinite(value) ? value : 0)),
         userStore.currentUserDefaultCurrency || "CNY",
     );
 }
@@ -3669,7 +3670,7 @@ function reviewItemToItem(item: AIReviewItemInfoResponse): Item {
               : "支出";
     const amount = recognized?.sourceAmount
         ? formatAmountToLocalizedNumeralsWithCurrency(
-              recognized.sourceAmount,
+              parseBigDecimal(recognized.sourceAmount),
               userStore.currentUserDefaultCurrency,
           )
         : "待补充";
@@ -3953,7 +3954,7 @@ function transactionToItem(transaction: Transaction): Item {
         transaction.sourceAccount?.currency ||
         userStore.currentUserDefaultCurrency;
     const amount = formatAmountToLocalizedNumeralsWithCurrency(
-        isModifyBalance ? Math.abs(transaction.sourceAmount) : transaction.sourceAmount,
+        parseBigDecimal(isModifyBalance ? Math.abs(transaction.sourceAmount) : transaction.sourceAmount),
         currency,
     );
     const prefix = isModifyBalance
@@ -4305,12 +4306,12 @@ function occurrenceAmountLabel(item: ScheduledOccurrence): string {
             (account) => account.id === item.sourceAccountId,
         )?.currency || userStore.currentUserDefaultCurrency;
     const source = formatAmountToLocalizedNumeralsWithCurrency(
-        item.sourceAmount,
+        parseBigDecimal(item.sourceAmount),
         currency,
     );
     if (item.type !== TransactionType.Transfer) return source;
     const destination = formatAmountToLocalizedNumeralsWithCurrency(
-        item.destinationAmount,
+        parseBigDecimal(item.destinationAmount),
         currency,
     );
     return `${source} → ${destination}`;
@@ -4375,7 +4376,7 @@ const selectedGoalLedgerName = computed(() => {
 
 const formatGoalMoney = (amount: number): string =>
     formatAmountToLocalizedNumeralsWithCurrency(
-        amount,
+        parseBigDecimal(amount),
         userStore.currentUserDefaultCurrency || "CNY",
     );
 
@@ -4452,8 +4453,8 @@ function openFundEditor(goal: SavingsGoal, mode: "deposit" | "withdraw"): void {
         .catch(showError);
 }
 
-function fundAccountLabel(account: { name: string, balance: number, currency: string }): string {
-    return `${account.name}（${formatAmountToLocalizedNumeralsWithCurrency(account.balance, account.currency)}）`;
+function fundAccountLabel(account: { name: string, balance: number | string, currency: string }): string {
+    return `${account.name}（${formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(account.balance), account.currency)}）`;
 }
 
 function closeFundEditor(): void {

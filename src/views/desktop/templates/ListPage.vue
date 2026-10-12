@@ -10,8 +10,8 @@
                         <v-btn class="ms-3" color="primary" variant="tonal"
                                :disabled="loading || updating" @click="saveSortResult"
                                v-if="displayOrderModified">{{ tt('Save Display Order') }}</v-btn>
-                        <v-btn density="compact" color="default" variant="text" size="24"
-                               class="ms-2" :icon="true" :disabled="loading || updating"
+                        <v-btn density="compact" color="default" variant="text" class="ms-2"
+                               :aria-label="tt('Refresh')" :icon="true" :disabled="loading || updating"
                                :loading="loading" @click="reload">
                             <template #loader>
                                 <v-progress-circular indeterminate size="20"/>
@@ -21,7 +21,7 @@
                         </v-btn>
                         <v-spacer/>
                         <v-btn density="comfortable" color="default" variant="text" class="ms-2"
-                               :disabled="loading || updating" :icon="true">
+                               :aria-label="tt('More')" :disabled="loading || updating" :icon="true">
                             <v-icon :icon="mdiDotsVertical" />
                             <v-menu activator="parent">
                                 <v-list>
@@ -89,7 +89,7 @@
                                                 <span class="transaction-template-name">{{ element.name }}</span>
                                                 <span class="text-caption text-medium-emphasis" v-if="templateType === TemplateType.Schedule.type">
                                                     {{ formatScheduledRule(element) }} · 下次：{{ formatNextScheduledTime(element.nextScheduledTime) }} ·
-                                                    {{ formatAmountToLocalizedNumeralsWithCurrency(Math.abs(element.sourceAmount), userStore.currentUserDefaultCurrency) }}
+                                                    {{ formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(Math.abs(element.sourceAmount)), userStore.currentUserDefaultCurrency) }}
                                                 </span>
                                             </div>
                                         </div>
@@ -133,7 +133,7 @@
 
                                         <span class="ms-2">
                                             <v-icon :class="!loading && !updating && availableTemplateCount > 1 ? 'drag-handle' : 'disabled'"
-                                                    :icon="mdiDrag"/>
+                                                    :aria-label="tt('Drag to Reorder')" :icon="mdiDrag"/>
                                             <v-tooltip activator="parent" v-if="!loading && !updating && availableTemplateCount > 1 && hoveredTemplateId === element.id">{{ tt('Drag to Reorder') }}</v-tooltip>
                                         </span>
                                     </div>
@@ -173,6 +173,7 @@ import {
     getAvailableTemplateCount
 } from '@/lib/template.ts';
 import { formatNextScheduledTime, formatScheduledRule } from '@/lib/scheduled_transaction.ts';
+import { parseBigDecimal } from '@/lib/numeral.ts';
 
 import {
     mdiRefresh,

@@ -3,7 +3,7 @@
         <router-link to="/">
             <div class="auth-logo d-flex align-start gap-x-3">
                 <img alt="logo" class="login-page-logo" :src="APPLICATION_LOGO_PATH" />
-                <h1 class="font-weight-medium leading-normal text-2xl">{{ tt('global.app.title') }}</h1>
+                <span class="auth-app-title">{{ tt('global.app.title') }}</span>
             </div>
         </router-link>
         <v-row no-gutters class="auth-wrapper signup-wrapper">
@@ -30,11 +30,11 @@
                     <v-window class="signup-window disable-tab-transition" v-model="currentStep">
                         <v-form>
                             <v-window-item value="basicSetting">
-                                <h4 class="text-h4 mb-1">{{ tt('Basic Information') }}</h4>
-                                <p class="text-sm mt-2 mb-5">
+                                <div class="text-headline-small mb-1">{{ tt('Basic Information') }}</div>
+                                <div class="auth-message text-body-medium my-3">
                                     <span>{{ tt('Already have an account?') }}</span>
                                     <router-link class="ms-1" to="/login">{{ tt('Click here to log in') }}</router-link>
-                                </p>
+                                </div>
                                 <v-row>
                                     <v-col cols="12" md="6">
                                         <v-text-field
@@ -128,9 +128,9 @@
                                 </v-row>
                             </v-window-item>
 
-                            <v-window-item value="presetCategories" class="signup-preset-categories">
-                                <h4 class="text-h4 mb-1">{{ tt('Preset Categories') }}</h4>
-                                <p class="text-sm mt-2 mb-2">{{ tt('Set whether to use preset transaction categories') }}</p>
+                            <v-window-item value="presetCategories">
+                                <div class="text-headline-small mb-1">{{ tt('Preset Categories') }}</div>
+                                <div class="auth-message text-body-medium my-3">{{ tt('Set whether to use preset transaction categories') }}</div>
 
                                 <v-row>
                                     <v-col cols="12" sm="6">
@@ -144,16 +144,16 @@
                                     </v-col>
                                 </v-row>
 
-                                <div class="overflow-y-auto px-3" :class="{ 'disabled': !usePresetCategories || submitting || navigateToHomePage }" style="max-height: 323px">
+                                <div class="overflow-y-auto pe-1" :class="{ 'disabled': !usePresetCategories || submitting || navigateToHomePage }" style="max-height: 323px">
                                     <v-row :key="categoryType" v-for="(categories, categoryType) in allPresetCategories">
                                         <v-col cols="12" md="12">
-                                            <h4 class="mb-3">{{ getCategoryTypeName(parseInt(categoryType)) }}</h4>
+                                            <span class="text-body-large">{{ getCategoryTypeName(parseInt(categoryType)) }}</span>
 
-                                            <v-expansion-panels class="border rounded" variant="accordion" multiple>
+                                            <v-expansion-panels class="compacted-expansion-panels mt-2" variant="accordion" multiple>
                                                 <v-expansion-panel :key="idx" v-for="(category, idx) in categories">
-                                                    <v-expansion-panel-title class="py-0">
-                                                        <ItemIcon icon-type="category" :icon-id="category.icon" :color="category.color"></ItemIcon>
-                                                        <span class="ms-3">{{ category.name }}</span>
+                                                    <v-expansion-panel-title class="py-0 px-4">
+                                                        <ItemIcon :icon-type="getCategoryIconType(category.iconType)" :icon-id="category.icon" :color="category.color"></ItemIcon>
+                                                        <span class="text-body-medium ms-2">{{ category.name }}</span>
                                                     </v-expansion-panel-title>
                                                     <v-expansion-panel-text v-if="category.subCategories.length">
                                                         <v-list rounded density="comfortable" class="pa-0">
@@ -161,9 +161,9 @@
                                                                       v-for="(subCategory, subIdx) in category.subCategories">
                                                                 <v-list-item>
                                                                     <template #prepend>
-                                                                        <ItemIcon icon-type="category" :icon-id="subCategory.icon" :color="subCategory.color"></ItemIcon>
+                                                                        <ItemIcon :icon-type="getCategoryIconType(subCategory.iconType)" :icon-id="subCategory.icon" :color="subCategory.color"></ItemIcon>
                                                                     </template>
-                                                                    <span class="ms-3">{{ subCategory.name }}</span>
+                                                                    <span class="text-body-medium ms-2">{{ subCategory.name }}</span>
                                                                 </v-list-item>
                                                                 <v-divider v-if="subIdx !== category.subCategories.length - 1"/>
                                                             </template>
@@ -177,8 +177,8 @@
                             </v-window-item>
 
                             <v-window-item value="finalResult" v-if="finalResultMessage">
-                                <h4 class="text-h4 mb-1">{{ tt('Registration Completed') }}</h4>
-                                <p class="my-5">{{ finalResultMessage }}</p>
+                                <div class="text-headline-large mb-1">{{ tt('Registration Completed') }}</div>
+                                <div class="my-3">{{ finalResultMessage }}</div>
                             </v-window-item>
                         </v-form>
                     </v-window>
@@ -233,6 +233,7 @@ import { type LocalizedPresetCategory } from '@/core/category.ts';
 import { APPLICATION_LOGO_PATH } from '@/consts/asset.ts';
 
 import { categorizedArrayToPlainArray } from '@/lib/common.ts';
+import { getCategoryIconType } from '@/lib/icon.ts';
 import { isUserLogined } from '@/lib/userstate.ts';
 
 import {
@@ -269,6 +270,7 @@ const navigateToHomePage = ref<boolean>(false);
 
 const allWeekDays = computed<TypeAndDisplayName[]>(() => getAllWeekDays());
 const allPresetCategories = computed<Record<string, LocalizedPresetCategory[]>>(() => getAllTransactionDefaultCategories(0, currentLocale.value));
+
 const allSteps = computed<StepBarItem[]>(() => {
     const allSteps = [
         {
@@ -403,7 +405,8 @@ function onSnackbarShowStateChanged(newValue: boolean): void {
     z-index: 5;
 }
 
-.signup-page .auth-logo h1 {
+.signup-page .auth-logo h1,
+.signup-page .auth-logo .auth-app-title {
     color: #fff !important;
     font-weight: 750 !important;
     text-shadow: 0 2px 16px rgba(0, 0, 0, .45);
@@ -578,7 +581,8 @@ function onSnackbarShowStateChanged(newValue: boolean): void {
     opacity: 1 !important;
 }
 
-.signup-panel :deep(h4.text-h4) {
+.signup-panel :deep(h4.text-h4),
+.signup-panel :deep(.text-headline-small) {
     color: #12141a !important;
     font-size: 27px !important;
     font-weight: 850 !important;
@@ -588,7 +592,9 @@ function onSnackbarShowStateChanged(newValue: boolean): void {
 }
 
 .signup-panel :deep(p),
-.signup-panel :deep(p span) {
+.signup-panel :deep(p span),
+.signup-panel :deep(.auth-message),
+.signup-panel :deep(.auth-message span) {
     color: #475467 !important;
     font-size: 14px;
     font-weight: 520;
@@ -712,7 +718,8 @@ function onSnackbarShowStateChanged(newValue: boolean): void {
 }
 
 @media (max-width: 959px) {
-    .signup-page .auth-logo h1 { color: #12141a !important; text-shadow: none; }
+    .signup-page .auth-logo h1,
+.signup-page .auth-logo .auth-app-title { color: #12141a !important; text-shadow: none; }
     .signup-card { flex-basis: 100%; width: 100%; max-width: 100%; min-height: 100dvh; padding: 78px 18px 18px; }
     .signup-panel { max-height: none; padding: 22px 20px 26px; border-radius: 20px !important; }
 }

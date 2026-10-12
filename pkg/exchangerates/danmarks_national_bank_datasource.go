@@ -17,6 +17,9 @@ import (
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/validators"
 )
 
+// API Documentation:
+// https://www.nationalbanken.dk/en/what-we-do/stable-prices-monetary-policy-and-the-danish-economy/exchange-rates
+
 const danmarksNationalbankExchangeRateUrl = "https://www.nationalbanken.dk/api/currencyratesxml?lang=en"
 const danmarksNationalbankExchangeRateReferenceUrl = "https://www.nationalbanken.dk/en/what-we-do/stable-prices-monetary-policy-and-the-danish-economy/exchange-rates"
 const danmarksNationalbankDataSource = "Danmarks Nationalbank"

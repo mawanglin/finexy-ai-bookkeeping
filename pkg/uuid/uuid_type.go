@@ -26,4 +26,8 @@ const (
 	// to one domain. Uniqueness is unaffected; the type is never decoded back
 	// for validation.
 	UUID_TYPE_FAMILY UuidType = 15
+	// UUID_TYPE_CUSTOM_ICON shares the picture slot because all 4 type bits are
+	// already assigned. Both are user uploaded images; sharing a slot only shares
+	// the per-second sequence counter, so generated ids remain unique.
+	UUID_TYPE_CUSTOM_ICON = UUID_TYPE_PICTURE
 )

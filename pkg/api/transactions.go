@@ -1,10 +1,12 @@
 package api
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"math"
+	"math/big"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -701,8 +703,8 @@ func (a *TransactionsApi) TransactionReconciliationStatementHandler(c *core.WebC
 
 	for i := 0; i < len(transactionResult); i++ {
 		transactionResult := transactionResult[i]
-		accountOpeningBalance := int64(0)
-		accountClosingBalance := int64(0)
+		accountOpeningBalance := big.NewInt(0)
+		accountClosingBalance := big.NewInt(0)
 
 		if transactionWithBalance, exists := transactionAccountBalanceMap[transactionResult.Id]; exists {
 			accountOpeningBalance = transactionWithBalance.AccountOpeningBalance
@@ -713,20 +715,96 @@ func (a *TransactionsApi) TransactionReconciliationStatementHandler(c *core.WebC
 
 		responseItems[i] = &models.TransactionReconciliationStatementResponseItem{
 			TransactionInfoResponse: transactionResult,
-			AccountOpeningBalance:   accountOpeningBalance,
-			AccountClosingBalance:   accountClosingBalance,
+			AccountOpeningBalance:   accountOpeningBalance.String(),
+			AccountClosingBalance:   accountClosingBalance.String(),
 		}
 	}
 
 	reconciliationStatementResp := &models.TransactionReconciliationStatementResponse{
 		Transactions:   responseItems,
-		TotalInflows:   totalInflows,
-		TotalOutflows:  totalOutflows,
-		OpeningBalance: openingBalance,
-		ClosingBalance: closingBalance,
+		TotalInflows:   totalInflows.String(),
+		TotalOutflows:  totalOutflows.String(),
+		OpeningBalance: openingBalance.String(),
+		ClosingBalance: closingBalance.String(),
 	}
 
 	return reconciliationStatementResp, nil
+}
+
+// TransactionUnreconciledTransactionCountsHandler returns unreconciled transaction counts of current user's accounts
+func (a *TransactionsApi) TransactionUnreconciledTransactionCountsHandler(c *core.WebContext) (any, *errs.Error) {
+	var unreconciledCountReq models.TransactionUnreconciledCountRequest
+	err := c.ShouldBindQuery(&unreconciledCountReq)
+
+	if err != nil {
+		log.Warnf(c, "[transactions.TransactionUnreconciledTransactionCountsHandler] parse request failed, because %s", err.Error())
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+
+	selectedAccountIds := make(map[int64]bool)
+
+	if unreconciledCountReq.AccountIds != "" {
+		accountIds, err := utils.StringArrayToInt64Array(strings.Split(unreconciledCountReq.AccountIds, ","))
+
+		if err != nil {
+			return nil, errs.ErrAccountIdInvalid
+		}
+
+		for _, accountId := range accountIds {
+			selectedAccountIds[accountId] = true
+		}
+	}
+
+	uid := c.GetCurrentUid()
+	user, err := a.users.GetUserById(c, uid)
+
+	if err != nil {
+		if !errs.IsCustomError(err) {
+			log.Errorf(c, "[transactions.TransactionUnreconciledTransactionCountsHandler] failed to get user, because %s", err.Error())
+		}
+
+		return nil, errs.ErrUserNotFound
+	}
+
+	if !user.UseLastReconciledTime {
+		return nil, errs.ErrLastReconciledTimeIsNotEnabled
+	}
+
+	accounts, err := a.accounts.GetAllAccountsByUid(c, uid)
+
+	if err != nil {
+		log.Errorf(c, "[transactions.TransactionUnreconciledTransactionCountsHandler] failed to get all accounts for user \"uid:%d\", because %s", uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	accountLastReconciledTimes := make(map[int64]int64, len(accounts))
+
+	for _, account := range accounts {
+		if account.Hidden || account.Type == models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS {
+			continue
+		}
+
+		if len(selectedAccountIds) > 0 && !selectedAccountIds[account.AccountId] {
+			continue
+		}
+
+		if account.Extend != nil && account.Extend.LastReconciledTime != nil && *account.Extend.LastReconciledTime > 0 {
+			accountLastReconciledTimes[account.AccountId] = *account.Extend.LastReconciledTime
+		} else {
+			accountLastReconciledTimes[account.AccountId] = 0
+		}
+	}
+
+	counts, err := a.transactions.GetUnreconciledTransactionCounts(c, uid, accountLastReconciledTimes)
+
+	if err != nil {
+		log.Errorf(c, "[transactions.TransactionUnreconciledTransactionCountsHandler] failed to get unreconciled transaction counts for user \"uid:%d\", because %s", uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	return &models.TransactionUnreconciledCountResponse{
+		Items: counts,
+	}, nil
 }
 
 // TransactionStatisticsHandler returns transaction statistics of current user
@@ -778,7 +856,7 @@ func (a *TransactionsApi) TransactionStatisticsHandler(c *core.WebContext) (any,
 		statisticResp.Items[i] = &models.TransactionStatisticResponseItem{
 			CategoryId:  totalAmountItem.CategoryId,
 			AccountId:   totalAmountItem.AccountId,
-			TotalAmount: totalAmountItem.Amount,
+			TotalAmount: totalAmountItem.Amount.String(),
 		}
 
 		if totalAmountItem.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT || totalAmountItem.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN {
@@ -848,7 +926,7 @@ func (a *TransactionsApi) TransactionStatisticsTrendsHandler(c *core.WebContext)
 			monthlyStatisticResp.Items[i] = &models.TransactionStatisticResponseItem{
 				CategoryId:  totalAmountItem.CategoryId,
 				AccountId:   totalAmountItem.AccountId,
-				TotalAmount: totalAmountItem.Amount,
+				TotalAmount: totalAmountItem.Amount.String(),
 			}
 
 			if totalAmountItem.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT || totalAmountItem.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN {
@@ -917,8 +995,8 @@ func (a *TransactionsApi) TransactionStatisticsAssetTrendsHandler(c *core.WebCon
 			accountBalance := dailyAccountBalances[i]
 			dailyStatisticResp.Items[i] = &models.TransactionStatisticAssetTrendsResponseDataItem{
 				AccountId:             accountBalance.AccountId,
-				AccountOpeningBalance: accountBalance.AccountOpeningBalance,
-				AccountClosingBalance: accountBalance.AccountClosingBalance,
+				AccountOpeningBalance: accountBalance.AccountOpeningBalance.String(),
+				AccountClosingBalance: accountBalance.AccountClosingBalance.String(),
 			}
 		}
 
@@ -976,6 +1054,13 @@ func (a *TransactionsApi) TransactionAmountsHandler(c *core.WebContext) (any, *e
 		}
 	}
 
+	tagFilters, err := models.ParseTransactionTagFilter(transactionAmountsReq.TagFilter)
+
+	if err != nil {
+		log.Warnf(c, "[transactions.TransactionAmountsHandler] parse transaction tag filters error, because %s", err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
 	clientTimezone, err := c.GetClientTimezone()
 
 	if err != nil {
@@ -998,14 +1083,14 @@ func (a *TransactionsApi) TransactionAmountsHandler(c *core.WebContext) (any, *e
 	for i := 0; i < len(requestItems); i++ {
 		requestItem := requestItems[i]
 
-		incomeAmounts, expenseAmounts, err := a.transactions.GetAccountsTotalIncomeAndExpense(c, uid, requestItem.StartTime, requestItem.EndTime, excludeAccountIds, excludeCategoryIds, clientTimezone, transactionAmountsReq.UseTransactionTimezone)
+		incomeAmounts, expenseAmounts, err := a.transactions.GetAccountsTotalIncomeAndExpense(c, uid, requestItem.StartTime, requestItem.EndTime, excludeAccountIds, excludeCategoryIds, tagFilters, clientTimezone, transactionAmountsReq.UseTransactionTimezone)
 
 		if err != nil {
 			log.Errorf(c, "[transactions.TransactionAmountsHandler] failed to get transaction amounts item for user \"uid:%d\", because %s", uid, err.Error())
 			return nil, errs.Or(err, errs.ErrOperationFailed)
 		}
 
-		amountsMap := make(map[string]*models.TransactionAmountsResponseItemAmountInfo)
+		amountsMap := make(map[string]*models.TransactionAmountsAndCurrency)
 
 		for accountId, incomeAmount := range incomeAmounts {
 			account, exists := accountMap[accountId]
@@ -1018,14 +1103,14 @@ func (a *TransactionsApi) TransactionAmountsHandler(c *core.WebContext) (any, *e
 			totalAmounts, exists := amountsMap[account.Currency]
 
 			if !exists {
-				totalAmounts = &models.TransactionAmountsResponseItemAmountInfo{
+				totalAmounts = &models.TransactionAmountsAndCurrency{
 					Currency:      account.Currency,
-					IncomeAmount:  0,
-					ExpenseAmount: 0,
+					IncomeAmount:  big.NewInt(0),
+					ExpenseAmount: big.NewInt(0),
 				}
 			}
 
-			totalAmounts.IncomeAmount += incomeAmount
+			totalAmounts.IncomeAmount.Add(totalAmounts.IncomeAmount, incomeAmount)
 			amountsMap[account.Currency] = totalAmounts
 		}
 
@@ -1040,21 +1125,25 @@ func (a *TransactionsApi) TransactionAmountsHandler(c *core.WebContext) (any, *e
 			totalAmounts, exists := amountsMap[account.Currency]
 
 			if !exists {
-				totalAmounts = &models.TransactionAmountsResponseItemAmountInfo{
+				totalAmounts = &models.TransactionAmountsAndCurrency{
 					Currency:      account.Currency,
-					IncomeAmount:  0,
-					ExpenseAmount: 0,
+					IncomeAmount:  big.NewInt(0),
+					ExpenseAmount: big.NewInt(0),
 				}
 			}
 
-			totalAmounts.ExpenseAmount += expenseAmount
+			totalAmounts.ExpenseAmount.Add(totalAmounts.ExpenseAmount, expenseAmount)
 			amountsMap[account.Currency] = totalAmounts
 		}
 
 		allTotalAmounts := make(models.TransactionAmountsResponseItemAmountInfoSlice, 0)
 
 		for _, totalAmounts := range amountsMap {
-			allTotalAmounts = append(allTotalAmounts, totalAmounts)
+			allTotalAmounts = append(allTotalAmounts, &models.TransactionAmountsResponseItemAmountInfo{
+				Currency:      totalAmounts.Currency,
+				IncomeAmount:  totalAmounts.IncomeAmount.String(),
+				ExpenseAmount: totalAmounts.ExpenseAmount.String(),
+			})
 		}
 
 		sort.Sort(allTotalAmounts)
@@ -1067,6 +1156,157 @@ func (a *TransactionsApi) TransactionAmountsHandler(c *core.WebContext) (any, *e
 	}
 
 	return amountsResp, nil
+}
+
+// TransactionDailyAmountsHandler returns daily transaction amounts of current user
+func (a *TransactionsApi) TransactionDailyAmountsHandler(c *core.WebContext) (any, *errs.Error) {
+	var transactionAmountsReq models.TransactionDailyAmountsRequest
+	err := c.ShouldBindQuery(&transactionAmountsReq)
+
+	if err != nil {
+		log.Warnf(c, "[transactions.TransactionDailyAmountsHandler] parse request failed, because %s", err.Error())
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+
+	if transactionAmountsReq.EndTime < transactionAmountsReq.StartTime {
+		return nil, errs.ErrDateRangeInvalid
+	}
+
+	excludeAccountIds := make([]int64, 0)
+	excludeCategoryIds := make([]int64, 0)
+
+	if transactionAmountsReq.ExcludeAccountIds != "" {
+		excludeAccountIds, err = utils.StringArrayToInt64Array(strings.Split(transactionAmountsReq.ExcludeAccountIds, ","))
+
+		if err != nil {
+			return nil, errs.ErrAccountIdInvalid
+		}
+	}
+
+	if transactionAmountsReq.ExcludeCategoryIds != "" {
+		excludeCategoryIds, err = utils.StringArrayToInt64Array(strings.Split(transactionAmountsReq.ExcludeCategoryIds, ","))
+
+		if err != nil {
+			return nil, errs.ErrTransactionCategoryIdInvalid
+		}
+	}
+
+	tagFilters, err := models.ParseTransactionTagFilter(transactionAmountsReq.TagFilter)
+
+	if err != nil {
+		log.Warnf(c, "[transactions.TransactionDailyAmountsHandler] parse transaction tag filters error, because %s", err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	clientTimezone, err := c.GetClientTimezone()
+
+	if err != nil {
+		log.Warnf(c, "[transactions.TransactionDailyAmountsHandler] cannot get client timezone, because %s", err.Error())
+		return nil, errs.ErrClientTimezoneOffsetInvalid
+	}
+
+	uid := c.GetCurrentUid()
+	accounts, err := a.accounts.GetAllAccountsByUid(c, uid)
+	accountMap := a.accounts.GetAccountMapByList(accounts)
+
+	if err != nil {
+		log.Errorf(c, "[transactions.TransactionDailyAmountsHandler] failed to get all accounts for user \"uid:%d\", because %s", uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	incomeAmounts, expenseAmounts, err := a.transactions.GetAccountsDailyIncomeAndExpense(c, uid, transactionAmountsReq.StartTime, transactionAmountsReq.EndTime, excludeAccountIds, excludeCategoryIds, tagFilters, clientTimezone, transactionAmountsReq.UseTransactionTimezone)
+
+	if err != nil {
+		log.Errorf(c, "[transactions.TransactionDailyAmountsHandler] failed to get daily amounts for user \"uid:%d\", because %s", uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	allDates := make(map[int32]bool)
+
+	for date := range incomeAmounts {
+		allDates[date] = true
+	}
+
+	for date := range expenseAmounts {
+		allDates[date] = true
+	}
+
+	dates := make([]int32, 0, len(allDates))
+
+	for date := range allDates {
+		dates = append(dates, date)
+	}
+
+	slices.Sort(dates)
+
+	result := make([]*models.TransactionDailyAmountsResponseItem, 0, len(dates))
+
+	for _, date := range dates {
+		amountsByCurrency := make(map[string]*models.TransactionAmountsAndCurrency)
+
+		for accountId, amount := range incomeAmounts[date] {
+			account, exists := accountMap[accountId]
+
+			if !exists {
+				log.Warnf(c, "[transactions.TransactionDailyAmountsHandler] cannot find account for account \"id:%d\" of user \"uid:%d\"", accountId, uid)
+				continue
+			}
+
+			totalAmounts, exists := amountsByCurrency[account.Currency]
+
+			if !exists {
+				totalAmounts = &models.TransactionAmountsAndCurrency{
+					Currency:      account.Currency,
+					IncomeAmount:  big.NewInt(0),
+					ExpenseAmount: big.NewInt(0),
+				}
+			}
+
+			totalAmounts.IncomeAmount.Add(totalAmounts.IncomeAmount, amount)
+			amountsByCurrency[account.Currency] = totalAmounts
+		}
+
+		for accountId, amount := range expenseAmounts[date] {
+			account, exists := accountMap[accountId]
+
+			if !exists {
+				log.Warnf(c, "[transactions.TransactionDailyAmountsHandler] cannot find account for account \"id:%d\" of user \"uid:%d\"", accountId, uid)
+				continue
+			}
+
+			totalAmounts, exists := amountsByCurrency[account.Currency]
+
+			if !exists {
+				totalAmounts = &models.TransactionAmountsAndCurrency{
+					Currency:      account.Currency,
+					IncomeAmount:  big.NewInt(0),
+					ExpenseAmount: big.NewInt(0),
+				}
+			}
+
+			totalAmounts.ExpenseAmount.Add(totalAmounts.ExpenseAmount, amount)
+			amountsByCurrency[account.Currency] = totalAmounts
+		}
+
+		dailyTotalAmounts := make(models.TransactionAmountsResponseItemAmountInfoSlice, 0, len(amountsByCurrency))
+
+		for _, total := range amountsByCurrency {
+			dailyTotalAmounts = append(dailyTotalAmounts, &models.TransactionAmountsResponseItemAmountInfo{
+				Currency:      total.Currency,
+				IncomeAmount:  total.IncomeAmount.String(),
+				ExpenseAmount: total.ExpenseAmount.String(),
+			})
+		}
+
+		sort.Sort(dailyTotalAmounts)
+
+		result = append(result, &models.TransactionDailyAmountsResponseItem{
+			Date:    utils.FormatNumericYearMonthDayToLongDate(date),
+			Amounts: dailyTotalAmounts,
+		})
+	}
+
+	return result, nil
 }
 
 // TransactionGetHandler returns one specific transaction of current user
@@ -1155,7 +1395,7 @@ func (a *TransactionsApi) TransactionGetHandler(c *core.WebContext) (any, *errs.
 	var tagMap map[int64]*models.TransactionTag
 	var pictureInfos []*models.TransactionPictureInfo
 
-	if !transactionGetReq.TrimCategory {
+	if !transactionGetReq.TrimCategory && transaction.Type != models.TRANSACTION_DB_TYPE_MODIFY_BALANCE {
 		category, err = a.transactionCategories.GetCategoryByCategoryId(c, postingUid, transaction.CategoryId)
 
 		if err != nil {

@@ -11,6 +11,7 @@ import { useTransactionsStore } from './transaction.ts';
 import { useOverviewStore } from './overview.ts';
 import { useStatisticsStore } from './statistics.ts';
 import { useExplorersStore } from './explorer.ts';
+import { useUserCustomIconsStore } from './userCustomIcon.ts';
 import { useExchangeRatesStore } from './exchangeRates.ts';
 import { useProductAssetsStore } from './productAsset.ts';
 import { useMonthlyBudgetStore } from './monthlyBudget.ts';
@@ -33,6 +34,7 @@ import {
     isObject,
     isString
 } from '@/lib/common.ts';
+import { clearCustomIconCache } from '@/lib/cache.ts';
 import {
     hasUserAppLockState,
     getUserAppLockState,
@@ -60,6 +62,7 @@ export const useRootStore = defineStore('root', () => {
     const monthlyBudgetStore = useMonthlyBudgetStore();
     const aiReviewItemsStore = useAIReviewItemsStore();
     const aiReportsStore = useAIReportsStore();
+    const userCustomIconsStore = useUserCustomIconsStore();
 
     const currentNotification = ref<string | null>(null);
 
@@ -70,6 +73,7 @@ export const useRootStore = defineStore('root', () => {
 
         setNotificationContent(null);
 
+        userCustomIconsStore.resetCustomIcons();
         explorersStore.resetTransactionExplorers();
         statisticsStore.resetTransactionStatistics();
         overviewStore.resetTransactionOverview();
@@ -638,6 +642,9 @@ export const useRootStore = defineStore('root', () => {
                 if (!statisticsStore.transactionStatisticsStateInvalid) {
                     statisticsStore.updateTransactionStatisticsInvalidState(true);
                 }
+
+                userCustomIconsStore.resetCustomIcons();
+                clearCustomIconCache();
 
                 resolve(data.result);
             }).catch(error => {

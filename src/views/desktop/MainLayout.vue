@@ -347,7 +347,7 @@ const showAddTransactionButtonInDesktopNavbar = computed<boolean>(() => settings
 const isEnableApplicationLock = computed<boolean>(() => settingsStore.appSettings.applicationLock);
 const todayRecorded = computed<boolean>(() => {
     const today = overviewStore.transactionOverview.today;
-    return noTransactionsToday.value || (!!today && (today.incomeAmount !== 0 || today.expenseAmount !== 0));
+    return noTransactionsToday.value || (!!today && (today.incomeAmount.notEquals(0) || today.expenseAmount.notEquals(0)));
 });
 
 interface InAppReminder {
@@ -366,7 +366,7 @@ const currentYearMonth = computed<number>(() => {
 const inAppReminders = computed<InAppReminder[]>(() => {
     const reminders: InAppReminder[] = [];
     const budget = monthlyBudgetStore.budgets[currentYearMonth.value];
-    const expense = overviewStore.transactionOverview.thisMonth?.expenseAmount ?? 0;
+    const expense = overviewStore.transactionOverview.thisMonth?.expenseAmount?.toDoubleNumber() ?? 0;
     if (budget && budget.amount > 0) {
         const percentage = expense * 100 / budget.amount;
         if (percentage >= 100) {
@@ -403,7 +403,7 @@ let reminderRefreshTimer: number | undefined;
 function refreshInAppReminders(force: boolean): void {
     const tasks: Promise<unknown>[] = [
         monthlyBudgetStore.load(currentYearMonth.value, force),
-        overviewStore.loadTransactionOverview({ force, loadLast11Months: false }),
+        overviewStore.loadTransactionOverview({ force }),
         aiReviewItemsStore.load()
     ];
     if (isUserScheduledTransactionEnabled()) {

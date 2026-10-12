@@ -1,7 +1,7 @@
 package api
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/errs"

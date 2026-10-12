@@ -1,7 +1,7 @@
 package exchangerates
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"math"
 	"net/http"
 	"strings"
@@ -13,6 +13,9 @@ import (
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/utils"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/validators"
 )
+
+// API Documentation:
+// https://forex.cbm.gov.mm/index.php/api
 
 const centralBankOfMyanmarExchangeRateUrl = "https://forex.cbm.gov.mm/api/latest"
 const centralBankOfMyanmarExchangeRateReferenceUrl = "https://forex.cbm.gov.mm/index.php/fxrate"

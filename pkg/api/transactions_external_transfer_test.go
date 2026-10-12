@@ -32,7 +32,8 @@ func TestCreateNewExternalTransferModels(t *testing.T) {
 	require.NotNil(t, response)
 	assert.Equal(t, int64(0), response.SourceAccountId)
 	assert.Equal(t, int64(22), response.DestinationAccountId)
-	assert.Equal(t, int64(3400), response.DestinationAmount)
+	require.NotNil(t, response.DestinationAmount)
+	assert.Equal(t, int64(3400), *response.DestinationAmount)
 }
 
 func TestFilterTransactionsKeepsExternalTransfer(t *testing.T) {

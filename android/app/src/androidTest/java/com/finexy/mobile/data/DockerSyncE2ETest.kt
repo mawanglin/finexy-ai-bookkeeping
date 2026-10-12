@@ -58,7 +58,7 @@ class DockerSyncE2ETest {
             val api = FinexyApi(store)
             val accountId = post("v1/accounts/add.json", JSONObject().put("name", "Android E2E Wallet")
                 .put("category", 1).put("type", 1).put("icon", "1").put("color", "F05537")
-                .put("currency", "CNY").put("balance", 0).put("balanceTime", System.currentTimeMillis() / 1000))
+                .put("currency", "CNY").put("balance", "0").put("balanceTime", System.currentTimeMillis() / 1000))
                 .getJSONObject("result").getString("id").toLong()
             val repository = TransactionRepository(context, database, importLegacy = false)
             val engine = SyncEngine(api, repository)

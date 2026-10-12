@@ -1,7 +1,7 @@
 package _default
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"time"
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/converters/converter"

@@ -27,6 +27,9 @@ import logger from '@/lib/logger.ts';
 
 export const useTransactionCategoriesStore = defineStore('transactionCategories', () =>{
     const userStore = useUserStore();
+    let loadingPromise: Promise<Record<number, TransactionCategory[]>> | null = null;
+    let loadingLedgerId = '0';
+
     const allTransactionCategories = ref<Record<number, TransactionCategory[]>>({});
     const allTransactionCategoriesMap = ref<Record<string, TransactionCategory>>({});
     const transactionCategoryListStateInvalid = ref<boolean>(true);
@@ -209,6 +212,7 @@ export const useTransactionCategoriesStore = defineStore('transactionCategories'
     }
 
     function resetTransactionCategories(): void {
+        loadingPromise = null;
         allTransactionCategories.value = {};
         allTransactionCategoriesMap.value = {};
         transactionCategoryListStateInvalid.value = true;
@@ -248,22 +252,39 @@ export const useTransactionCategoriesStore = defineStore('transactionCategories'
 
     function loadAllCategories({ force, ledgerId }: { force?: boolean, ledgerId?: string }): Promise<Record<number, TransactionCategory[]>> {
         const requestedLedgerId = ledgerId || '0';
-        if (loadedLedgerId.value !== requestedLedgerId) force = true;
+
+        if (loadedLedgerId.value !== requestedLedgerId) {
+            force = true;
+        }
+
         if (defaultCategoriesBackfillPromise) {
             return defaultCategoriesBackfillPromise;
         }
 
-        if (!force && !transactionCategoryListStateInvalid.value) {
+        if (loadingPromise && loadingLedgerId === requestedLedgerId) {
+            return loadingPromise;
+        }
+
+        if (!force && !loadingPromise && !transactionCategoryListStateInvalid.value) {
             return new Promise((resolve) => {
                 resolve(allTransactionCategories.value);
             });
         }
 
-        return new Promise((resolve, reject) => {
+        // A request for another ledger supersedes the pending one; the stale response is rejected below.
+        loadingLedgerId = requestedLedgerId;
+        const currentPromise = loadingPromise = new Promise((resolve, reject) => {
             services.getAllTransactionCategories(ledgerId).then(response => {
+                if (!loadingPromise || loadingPromise !== currentPromise) {
+                    logger.error('loadingPromise is invalid after retrieving category list');
+                    reject({ message: 'An error occurred' });
+                    return;
+                }
+
                 const data = response.data;
 
                 if (!data || !data.success || !data.result) {
+                    loadingPromise = null;
                     reject({ message: 'Unable to retrieve category list' });
                     return;
                 }
@@ -286,7 +307,8 @@ export const useTransactionCategoriesStore = defineStore('transactionCategories'
 
                 const transactionCategories = TransactionCategory.ofMap(data.result);
 
-                if (force && data.result && isEquals(allTransactionCategories.value, transactionCategories)) {
+                if (force && loadedLedgerId.value === requestedLedgerId && data.result && isEquals(allTransactionCategories.value, transactionCategories)) {
+                    loadingPromise = null;
                     reject({ message: 'Category list is up to date', isUpToDate: true });
                     return;
                 }
@@ -296,6 +318,7 @@ export const useTransactionCategoriesStore = defineStore('transactionCategories'
                     : [];
 
                 if (categoryTypesWithoutSelectableCategories.length > 0) {
+                    loadingPromise = null;
                     backfillDefaultCategories(categoryTypesWithoutSelectableCategories).then(createdCategories => {
                         for (const categoryType of categoryTypesWithoutSelectableCategories) {
                             transactionCategories[categoryType] = [
@@ -316,8 +339,14 @@ export const useTransactionCategoriesStore = defineStore('transactionCategories'
 
                 loadTransactionCategoryList(transactionCategories);
                 loadedLedgerId.value = requestedLedgerId;
+                loadingPromise = null;
+
                 resolve(transactionCategories);
             }).catch(error => {
+                if (loadingPromise === currentPromise) {
+                    loadingPromise = null;
+                }
+
                 if (force) {
                     logger.error('failed to force load category list', error);
                 } else {
@@ -333,6 +362,8 @@ export const useTransactionCategoriesStore = defineStore('transactionCategories'
                 }
             });
         });
+
+        return loadingPromise;
     }
 
     function getCategory({ categoryId }: { categoryId: string }): Promise<TransactionCategory> {

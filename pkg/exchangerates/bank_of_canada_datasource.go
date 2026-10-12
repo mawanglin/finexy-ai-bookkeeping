@@ -1,7 +1,7 @@
 package exchangerates
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"math"
 	"net/http"
 	"strings"
@@ -14,6 +14,9 @@ import (
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/utils"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/validators"
 )
+
+// API Documentation:
+// https://www.bankofcanada.ca/valet/docs
 
 const bankOfCanadaExchangeRateUrl = "https://www.bankofcanada.ca/valet/observations/group/FX_RATES_DAILY/json?recent=1"
 const bankOfCanadaExchangeRateReferenceUrl = "https://www.bankofcanada.ca/rates/exchange/daily-exchange-rates/"

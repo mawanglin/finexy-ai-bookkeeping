@@ -17,6 +17,10 @@ import (
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/validators"
 )
 
+// API Documentation:
+// https://www.norges-bank.no/en/topics/Statistics/exchange_rates/?tab=api
+// https://www.norges-bank.no/en/topics/statistics/open-data/guide-data-warehouse/
+
 const norgesBankExchangeRateUrl = "https://data.norges-bank.no/api/data/EXR/B..NOK.SP?format=sdmx-compact-2.1&lastNObservations=1"
 const norgesBankExchangeRateReferenceUrl = "https://www.norges-bank.no/en/topics/Statistics/exchange_rates/"
 const norgesBankDataSource = "Norges Bank"
