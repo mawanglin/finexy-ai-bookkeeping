@@ -77,6 +77,11 @@
             </template>
 
             <template #content-before>
+                <v-card-text v-if="noAccountForEntry" class="no-account-notice" role="alert">
+                    <p><strong>当前账本还没有账户</strong></p>
+                    <p>记账需要选择资金账户。请先添加一个账户（如现金、银行卡、微信零钱），再回来记账；已填写的内容会保留为草稿。</p>
+                    <v-btn color="primary" variant="tonal" @click="goAddAccount">去添加账户</v-btn>
+                </v-card-text>
                 <v-card-text v-if="isCreateTemplate">
                     <template-creation-panel ref="templateCreationPanel" :active="isCreateTemplate && showState" :ready="!loading"
                         :capture-action-current="captureTemplateActionCurrent"
@@ -499,7 +504,7 @@
                     <template v-slot:activator="{ props }">
                         <div v-bind="props" class="d-inline-block">
                             <v-btn-group density="comfortable" v-if="!ordinaryPending && (mode === TransactionEditPageMode.Add || mode === TransactionEditPageMode.Edit)">
-                                <v-btn color="primary" :disabled="ordinaryCreateLocked || inputIsEmpty || loading || submitting || recognizing || (isCreateTemplate && templateCreationLocked) || (isAIReview && aiReviewLocked)" @click="save(AfterSaveAction.GoBack)">
+                                <v-btn color="primary" :disabled="ordinaryCreateLocked || loading || submitting || recognizing || (isCreateTemplate && templateCreationLocked) || (isAIReview && aiReviewLocked)" @click="save(AfterSaveAction.GoBack)">
                                     {{ isCreateTemplate || isAIReview ? '预览并确认' : tt(saveButtonTitle) }}
                                     <v-progress-circular indeterminate size="22" class="ms-2" v-if="submitting"></v-progress-circular>
                                 </v-btn>
@@ -608,6 +613,7 @@ import {
     getLocalDateFromYearDashMonthDashDay
 } from '@/lib/datetime.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
+import { useRouter } from 'vue-router';
 import type { ErrorResponse } from '@/core/api.ts';
 import {
     getTransactionPrimaryCategoryName,
@@ -1491,6 +1497,13 @@ function remove(): void {
     });
 }
 
+const router = useRouter();
+const noAccountForEntry = computed(() => !loading.value && props.type === TransactionEditPageType.Transaction &&
+    mode.value !== TransactionEditPageMode.View && !allVisibleAccounts.value.length);
+function goAddAccount(): void {
+    cancel();
+    void router.push('/account/list');
+}
 function cancel(): void {
     // Cancel revokes pending write authorization immediately; local draft
     // flushing can finish before the dialog itself closes.
@@ -1738,6 +1751,9 @@ defineExpose({
     border-bottom: 1px solid rgba(var(--v-border-color), .14);
 }
 .ordinary-create-recovery p { margin-bottom: 10px; }
+.no-account-notice { color: #b42318; }
+.no-account-notice p { margin-bottom: 8px; color: #344054; }
+.no-account-notice p strong { color: #b42318; }
 .ordinary-create-recovery .v-btn { min-height: 44px; }
 .transaction-edit-dialog .ai-review-confirmation-container {
     flex: 0 0 auto !important;
