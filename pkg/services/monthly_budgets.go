@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"time"
 
-	"xorm.io/xorm"
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/datastore"
@@ -73,7 +72,7 @@ func (s *MonthlyBudgetService) SetMonthlyBudget(c core.Context, uid int64, yearM
 
 	now := time.Now().Unix()
 	budget := &models.MonthlyBudget{}
-	err = s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	err = s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		has, err := sess.Where("uid=? AND deleted=? AND year_month=?", uid, false, yearMonth).Get(budget)
 		if err != nil {
 			return err

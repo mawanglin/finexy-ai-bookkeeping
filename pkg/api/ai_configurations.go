@@ -106,7 +106,7 @@ func (a *AIConfigurationsApi) ownerUid(c core.Context) (int64, error) {
 		}
 	}
 	user := &models.User{}
-	has, err := a.users.UserDB().NewSession(c).Where("deleted=?", false).Asc("created_unix_time", "uid").Get(user)
+	has, err := a.users.UserDB().NewSession(c).Where("deleted=?", false).OrderBy("created_unix_time asc, uid asc").Get(user)
 	if err != nil {
 		return 0, err
 	}

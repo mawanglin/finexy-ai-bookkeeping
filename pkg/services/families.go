@@ -3,7 +3,6 @@ package services
 import (
 	"time"
 
-	"xorm.io/xorm"
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/datastore"
@@ -46,7 +45,7 @@ func anyFamilyRole(models.FamilyMemberRole) bool { return true }
 
 // locateMembership returns the shard and membership row holding the given
 // user's membership in the given family.
-func (s *FamilyService) locateMembership(c core.Context, uid, familyId int64) (*datastore.Database, *models.FamilyMember, error) {
+func (s *FamilyService) locateMembership(c core.Context, uid, familyId int64) (datastore.Database, *models.FamilyMember, error) {
 	if uid <= 0 || familyId <= 0 {
 		return nil, nil, errs.ErrParameterInvalid
 	}
@@ -67,7 +66,7 @@ func (s *FamilyService) locateMembership(c core.Context, uid, familyId int64) (*
 
 // locateFamilyDB returns the shard holding the family rows when the user's
 // membership exists there and grants the capability.
-func (s *FamilyService) locateFamilyDB(c core.Context, uid, familyId int64, capability func(models.FamilyMemberRole) bool) (*datastore.Database, *models.FamilyMember, error) {
+func (s *FamilyService) locateFamilyDB(c core.Context, uid, familyId int64, capability func(models.FamilyMemberRole) bool) (datastore.Database, *models.FamilyMember, error) {
 	db, member, err := s.locateMembership(c, uid, familyId)
 	if err != nil {
 		return nil, nil, err
@@ -137,7 +136,7 @@ func (s *FamilyService) CreateFamilyGroup(c core.Context, uid int64, request *mo
 		return nil, errs.ErrSystemIsBusy
 	}
 
-	err := s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	err := s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		if _, err := sess.Insert(group); err != nil {
 			return err
 		}
@@ -239,7 +238,7 @@ func (s *FamilyService) DeleteFamilyGroup(c core.Context, uid, familyId int64) e
 	}
 
 	now := time.Now().Unix()
-	return db.DoTransaction(c, func(sess *xorm.Session) error {
+	return db.DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		rows, err := sess.ID(familyId).
 			Cols("deleted", "deleted_unix_time", "updated_unix_time").
 			Where("deleted=? AND owner_uid=?", false, uid).
@@ -451,7 +450,7 @@ func (s *FamilyService) CreateInvitation(c core.Context, uid int64, request *mod
 		ExpiredUnixTime: now + expiresInSeconds,
 	}
 
-	err = db.DoTransaction(c, func(sess *xorm.Session) error {
+	err = db.DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		// The token column is unique; regenerate on the rare collision.
 		for attempt := 0; attempt < 3; attempt++ {
 			token, err := utils.GetRandomNumberOrLowercaseLetter(FamilyInvitationTokenLength)
@@ -549,7 +548,7 @@ func (s *FamilyService) AcceptInvitation(c core.Context, uid int64, token string
 		return nil, errs.ErrUserIdInvalid
 	}
 
-	var familyDb *datastore.Database
+	var familyDb datastore.Database
 	var invitation *models.FamilyInvitation
 	for i := 0; i < s.UserDataDBCount() && invitation == nil; i++ {
 		db := s.UserDataDBByIndex(i)
@@ -567,7 +566,7 @@ func (s *FamilyService) AcceptInvitation(c core.Context, uid int64, token string
 	}
 
 	now := time.Now().Unix()
-	err := familyDb.DoTransaction(c, func(sess *xorm.Session) error {
+	err := familyDb.DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		if !invitation.CanBeAccepted(now) {
 			if invitation.Status == models.FAMILY_INVITATION_STATUS_PENDING {
 				// Lazily expire a pending invitation whose deadline has passed.

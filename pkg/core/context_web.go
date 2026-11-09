@@ -82,7 +82,7 @@ func (c *WebContext) SetContextId(requestId string) {
 func (c *WebContext) GetContextId() string {
 	requestId, exists := c.Get(webContextRequestIdFieldKey)
 
-	if !exists {
+	if !exists || requestId == nil {
 		return ""
 	}
 
@@ -98,7 +98,7 @@ func (c *WebContext) SetTextualToken(token string) {
 func (c *WebContext) GetTextualToken() string {
 	token, exists := c.Get(webContextTextualTokenFieldKey)
 
-	if !exists {
+	if !exists || token == nil {
 		return ""
 	}
 
@@ -114,27 +114,38 @@ func (c *WebContext) SetTokenClaims(claims *UserTokenClaims) {
 func (c *WebContext) GetTokenClaims() *UserTokenClaims {
 	claims, exists := c.Get(webContextTokenClaimsFieldKey)
 
-	if !exists {
+	if !exists || claims == nil {
 		return nil
 	}
 
 	return claims.(*UserTokenClaims)
 }
 
-// SetTokenContext sets the given user token context to context
-func (c *WebContext) SetTokenContext(context string) {
-	c.Set(webContextTokenContextFieldKey, context)
+// SetTokenRecord sets the given user token record to context
+func (c *WebContext) SetTokenRecord(record TokenRecord) {
+	c.Set(webContextTokenContextFieldKey, record)
+}
+
+// GetTokenRecord returns the current user token record
+func (c *WebContext) GetTokenRecord() TokenRecord {
+	record, exists := c.Get(webContextTokenContextFieldKey)
+
+	if !exists || record == nil {
+		return nil
+	}
+
+	return record.(TokenRecord)
 }
 
 // GetTokenContext returns the current user token context
 func (c *WebContext) GetTokenContext() string {
-	context, exists := c.Get(webContextTokenContextFieldKey)
+	record := c.GetTokenRecord()
 
-	if !exists {
+	if record == nil {
 		return ""
 	}
 
-	return context.(string)
+	return record.GetContext()
 }
 
 // GetCurrentUid returns the current user uid by the current user token
@@ -219,7 +230,7 @@ func (c *WebContext) SetResponseError(error *errs.Error) {
 func (c *WebContext) GetResponseError() *errs.Error {
 	err, exists := c.Get(webContextResponseErrorFieldKey)
 
-	if !exists {
+	if !exists || err == nil {
 		return nil
 	}
 

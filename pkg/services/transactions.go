@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"xorm.io/builder"
-	"xorm.io/xorm"
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/datastore"
@@ -632,7 +631,7 @@ func (s *TransactionService) GetLedgerTransactions(c core.Context, uid, ledgerId
 	}
 	condition, args := s.buildTransactionQueryCondition(postingUid, ledgerId, request.MaxTime, request.MinTime,
 		dbType, categoryIds, accountIds, tagFilters, request.AmountFilter, request.Keyword, request.MatchMode, true)
-	query := func() *xorm.Session {
+	query := func() datastore.DatabaseSession {
 		sess := db.NewSession(c).Where(condition, args...)
 		sess = s.appendFilterTagIdsConditionToQuery(sess, postingUid, request.MaxTime, request.MinTime, tagFilters, noTags)
 		return s.appendFilterPicturesConditionToQuery(sess, postingUid, request.MustHavePictures)
@@ -662,7 +661,7 @@ func (s *TransactionService) CreateTransaction(c core.Context, transaction *mode
 // Scheduled confirmation can claim its occurrence before posting and persist
 // the resulting transaction ID afterwards; any hook failure rolls back both.
 func (s *TransactionService) createTransactionWithHooks(c core.Context, transaction *models.Transaction, tagIds []int64, pictureIds []int64,
-	before func(*xorm.Session) error, after func(*xorm.Session) error) error {
+	before func(datastore.DatabaseSession) error, after func(datastore.DatabaseSession) error) error {
 	if transaction.Uid <= 0 {
 		return errs.ErrUserIdInvalid
 	}
@@ -728,7 +727,7 @@ func (s *TransactionService) createTransactionWithHooks(c core.Context, transact
 
 	userDataDb := s.UserDataDB(transaction.Uid)
 
-	return userDataDb.DoTransaction(c, func(sess *xorm.Session) error {
+	return userDataDb.DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		if before != nil {
 			if err := before(sess); err != nil {
 				return err
@@ -847,7 +846,7 @@ func (s *TransactionService) BatchCreateTransactions(c core.Context, uid int64, 
 
 	userDataDb := s.UserDataDB(uid)
 
-	return userDataDb.DoTransaction(c, func(sess *xorm.Session) error {
+	return userDataDb.DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		for i := 0; i < len(transactions); i++ {
 			transaction := transactions[i]
 			transactionTagIndexes := allTransactionTagIndexes[transaction.TransactionId]
@@ -1008,7 +1007,7 @@ func (s *TransactionService) ModifyTransaction(c core.Context, transaction *mode
 		}
 	}
 
-	err := s.UserDataDB(transaction.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	err := s.UserDataDB(transaction.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		// Get and verify current transaction
 		oldTransaction := &models.Transaction{}
 		has, err := sess.ID(transaction.TransactionId).Where("uid=? AND deleted=?", transaction.Uid, false).Get(oldTransaction)
@@ -1595,7 +1594,7 @@ func (s *TransactionService) BatchUpdateTransactionsCategory(c core.Context, uid
 		UpdatedUnixTime: now,
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		updatedRows, err := sess.Cols("category_id", "updated_unix_time").Where("uid=? AND deleted=?", uid, false).In("transaction_id", uniqueTransactionIds).Update(updateModel)
 
 		if err != nil {
@@ -1678,7 +1677,7 @@ func (s *TransactionService) BatchAddTagsToTransactions(c core.Context, uid int6
 		tagIds = append(tagIds, tagId)
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		// Get and verify tags
 		err := s.isTagsValid(sess, uid, transactionTagIndexes, tagIds)
 
@@ -1718,7 +1717,7 @@ func (s *TransactionService) BatchRemoveTagsFromTransactions(c core.Context, uid
 		DeletedUnixTime: now,
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		deletedRows, err := sess.Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=?", uid, false).In("transaction_id", uniqueTransactionIds).In("tag_id", uniqueTagIds).Update(tagIndexUpdateModel)
 
 		if err != nil {
@@ -1749,7 +1748,7 @@ func (s *TransactionService) BatchClearAllTagsFromTransactions(c core.Context, u
 		DeletedUnixTime: now,
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		deletedRows, err := sess.Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=?", uid, false).In("transaction_id", uniqueTransactionIds).Update(tagIndexUpdateModel)
 
 		if err != nil {
@@ -1776,7 +1775,7 @@ func (s *TransactionService) MoveAllTransactionsBetweenAccounts(c core.Context, 
 		return errs.ErrCannotMoveTransactionToSameAccount
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		// get and verify from and to account
 		fromAccount := &models.Account{}
 		has, err := sess.ID(fromAccountId).Where("uid=? AND deleted=?", uid, false).Get(fromAccount)
@@ -2034,7 +2033,7 @@ func (s *TransactionService) DeleteTransaction(c core.Context, uid int64, transa
 		DeletedUnixTime: now,
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		// Get and verify current transaction
 		oldTransaction := &models.Transaction{}
 		has, err := sess.ID(transactionId).Where("uid=? AND deleted=?", uid, false).Get(oldTransaction)
@@ -2202,7 +2201,7 @@ func (s *TransactionService) DeleteAllTransactions(c core.Context, uid int64, de
 		DeletedUnixTime: now,
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		// Update all transactions to deleted
 		_, err := sess.Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=?", uid, false).Update(updateModel)
 
@@ -2776,7 +2775,7 @@ func (s *TransactionService) GetTransactionIds(transactions []*models.Transactio
 	return transactionIds
 }
 
-func (s *TransactionService) doCreateTransaction(c core.Context, database *datastore.Database, sess *xorm.Session, transaction *models.Transaction, transactionTagIndexes []*models.TransactionTagIndex, tagIds []int64, pictureIds []int64, pictureUpdateModel *models.TransactionPictureInfo) error {
+func (s *TransactionService) doCreateTransaction(c core.Context, database datastore.Database, sess datastore.DatabaseSession, transaction *models.Transaction, transactionTagIndexes []*models.TransactionTagIndex, tagIds []int64, pictureIds []int64, pictureUpdateModel *models.TransactionPictureInfo) error {
 	// Get and verify source and destination account
 	sourceAccount, destinationAccount, err := s.getAccountModels(sess, transaction)
 
@@ -3044,7 +3043,7 @@ func (s *TransactionService) doCreateTransaction(c core.Context, database *datas
 	return err
 }
 
-func (s *TransactionService) updateAccountBalance(sess *xorm.Session, account *models.Account, delta int64) (int64, error) {
+func (s *TransactionService) updateAccountBalance(sess datastore.DatabaseSession, account *models.Account, delta int64) (int64, error) {
 	if delta == 0 {
 		return 1, nil
 	}
@@ -3315,7 +3314,7 @@ func (s *TransactionService) buildTransactionQueryCondition(uid int64, ledgerId 
 	return condition, conditionParams
 }
 
-func (s *TransactionService) appendFilterTagIdsConditionToQuery(sess *xorm.Session, uid int64, maxTransactionTime int64, minTransactionTime int64, tagFilters []*models.TransactionTagFilter, noTags bool) *xorm.Session {
+func (s *TransactionService) appendFilterTagIdsConditionToQuery(sess datastore.DatabaseSession, uid int64, maxTransactionTime int64, minTransactionTime int64, tagFilters []*models.TransactionTagFilter, noTags bool) datastore.DatabaseSession {
 	if noTags {
 		subQueryCondition := builder.And(builder.Eq{"uid": uid}, builder.Eq{"deleted": false})
 
@@ -3365,7 +3364,7 @@ func (s *TransactionService) appendFilterTagIdsConditionToQuery(sess *xorm.Sessi
 	return sess
 }
 
-func (s *TransactionService) appendFilterPicturesConditionToQuery(sess *xorm.Session, uid int64, mustHavePictures bool) *xorm.Session {
+func (s *TransactionService) appendFilterPicturesConditionToQuery(sess datastore.DatabaseSession, uid int64, mustHavePictures bool) datastore.DatabaseSession {
 	if !mustHavePictures {
 		return sess
 	}
@@ -3503,7 +3502,7 @@ func (s *TransactionService) createTransactionByScheduledTransactionTemplate(c c
 	return transaction, tagIds
 }
 
-func (s *TransactionService) getAccountModels(sess *xorm.Session, transaction *models.Transaction) (sourceAccount *models.Account, destinationAccount *models.Account, err error) {
+func (s *TransactionService) getAccountModels(sess datastore.DatabaseSession, transaction *models.Transaction) (sourceAccount *models.Account, destinationAccount *models.Account, err error) {
 	sourceAccount = &models.Account{}
 	destinationAccount = &models.Account{}
 
@@ -3600,7 +3599,7 @@ func (s *TransactionService) getAccountModels(sess *xorm.Session, transaction *m
 	return sourceAccount, destinationAccount, nil
 }
 
-func (s *TransactionService) getOldAccountModels(sess *xorm.Session, transaction *models.Transaction, oldTransaction *models.Transaction, sourceAccount *models.Account, destinationAccount *models.Account) (oldSourceAccount *models.Account, oldDestinationAccount *models.Account, err error) {
+func (s *TransactionService) getOldAccountModels(sess datastore.DatabaseSession, transaction *models.Transaction, oldTransaction *models.Transaction, sourceAccount *models.Account, destinationAccount *models.Account) (oldSourceAccount *models.Account, oldDestinationAccount *models.Account, err error) {
 	oldSourceAccount = &models.Account{}
 	oldDestinationAccount = &models.Account{}
 
@@ -3678,7 +3677,7 @@ func (s *TransactionService) isAccountIdValid(transaction *models.Transaction) e
 	return nil
 }
 
-func (s *TransactionService) isCategoryValid(sess *xorm.Session, transaction *models.Transaction) error {
+func (s *TransactionService) isCategoryValid(sess datastore.DatabaseSession, transaction *models.Transaction) error {
 	if transaction.SavingsGoalFundId > 0 && transaction.CategoryId == 0 &&
 		(transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT || transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN) {
 		return nil
@@ -3728,7 +3727,7 @@ func (s *TransactionService) isCategoryValid(sess *xorm.Session, transaction *mo
 	return nil
 }
 
-func (s *TransactionService) isTagsValid(sess *xorm.Session, uid int64, transactionTagIndexes []*models.TransactionTagIndex, tagIds []int64) error {
+func (s *TransactionService) isTagsValid(sess datastore.DatabaseSession, uid int64, transactionTagIndexes []*models.TransactionTagIndex, tagIds []int64) error {
 	if len(transactionTagIndexes) > 0 {
 		var tags []*models.TransactionTag
 		err := sess.Where("uid=? AND deleted=?", uid, false).In("tag_id", tagIds).Find(&tags)
@@ -3757,7 +3756,7 @@ func (s *TransactionService) isTagsValid(sess *xorm.Session, uid int64, transact
 	return nil
 }
 
-func (s *TransactionService) isPicturesValid(sess *xorm.Session, transaction *models.Transaction, pictureIds []int64) error {
+func (s *TransactionService) isPicturesValid(sess datastore.DatabaseSession, transaction *models.Transaction, pictureIds []int64) error {
 	if len(pictureIds) > 0 {
 		var pictureInfos []*models.TransactionPictureInfo
 		err := sess.Where("uid=? AND deleted=?", transaction.Uid, false).In("picture_id", pictureIds).Find(&pictureInfos)

@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"xorm.io/xorm"
-
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/datastore"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/errs"
@@ -21,7 +19,7 @@ import (
 // locateAccountGroupForManage resolves a root account and all of its children
 // through the ledger permission boundary. Family accounts live in the family
 // owner's data store and therefore cannot be found through UserDataDB(uid).
-func (s *AccountService) locateAccountGroupForManage(c core.Context, uid, accountId int64) (*datastore.Database, *models.Ledger, []*models.Account, error) {
+func (s *AccountService) locateAccountGroupForManage(c core.Context, uid, accountId int64) (datastore.Database, *models.Ledger, []*models.Account, error) {
 	if uid <= 0 {
 		return nil, nil, nil, errs.ErrUserIdInvalid
 	}
@@ -389,7 +387,7 @@ func (s *AccountService) CreateAccounts(c core.Context, mainAccount *models.Acco
 		}
 	}
 
-	return userDataDb.DoTransaction(c, func(sess *xorm.Session) error {
+	return userDataDb.DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		for i := 0; i < len(allAccounts); i++ {
 			account := allAccounts[i]
 			_, err := sess.Insert(account)
@@ -531,7 +529,7 @@ func (s *AccountService) ModifyAccounts(c core.Context, mainAccount *models.Acco
 
 	userDataDb := s.UserDataDB(mainAccount.Uid)
 
-	return userDataDb.DoTransaction(c, func(sess *xorm.Session) error {
+	return userDataDb.DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		// update accounts
 		for i := 0; i < len(updateAccounts); i++ {
 			account := updateAccounts[i]
@@ -696,7 +694,7 @@ func (s *AccountService) UpdateAccountExtend(c core.Context, uid int64, account 
 
 	account.UpdatedUnixTime = time.Now().Unix()
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		updatedRows, err := sess.ID(account.AccountId).Cols("extend", "updated_unix_time").Where("uid=? AND deleted=?", uid, false).Update(account)
 
 		if err != nil {
@@ -722,7 +720,7 @@ func (s *AccountService) HideAccount(c core.Context, uid int64, ids []int64, hid
 		UpdatedUnixTime: now,
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		updatedRows, err := sess.Cols("hidden", "updated_unix_time").Where("uid=? AND deleted=?", uid, false).In("account_id", ids).Update(updateModel)
 
 		if err != nil {
@@ -745,7 +743,7 @@ func (s *AccountService) ModifyAccountDisplayOrders(c core.Context, uid int64, a
 		accounts[i].UpdatedUnixTime = time.Now().Unix()
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		for i := 0; i < len(accounts); i++ {
 			account := accounts[i]
 			updatedRows, err := sess.ID(account.AccountId).Cols("display_order", "updated_unix_time").Where("uid=? AND deleted=?", uid, false).Update(account)
@@ -809,7 +807,7 @@ func (s *AccountService) MoveAccountToLedger(c core.Context, uid, accountId, tar
 	}
 	now := time.Now().Unix()
 
-	err = sourceDB.DoTransaction(c, func(sess *xorm.Session) error {
+	err = sourceDB.DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		// Templates and savings-goal funds have their own ledger lifecycle. They
 		// must be removed or completed before the account can move.
 		var templateRefs []*models.TransactionTemplate
@@ -956,7 +954,7 @@ func (s *AccountService) DeleteAccount(c core.Context, uid int64, accountId int6
 		DeletedUnixTime: now,
 	}
 
-	return db.DoTransaction(c, func(sess *xorm.Session) error {
+	return db.DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		var accountAndSubAccounts []*models.Account
 		err := sess.Where("deleted=? AND ledger_id=? AND ((account_id=? AND parent_account_id=?) OR parent_account_id=?)", false, ledgerId, accountId, models.LevelOneAccountParentId, accountId).Find(&accountAndSubAccounts)
 
@@ -1100,7 +1098,7 @@ func (s *AccountService) DeleteSubAccount(c core.Context, uid int64, accountId i
 		DeletedUnixTime: now,
 	}
 
-	return db.DoTransaction(c, func(sess *xorm.Session) error {
+	return db.DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		subAccountsCount, err := sess.Where("deleted=? AND ledger_id=? AND parent_account_id=?", false, account.LedgerId, account.ParentAccountId).Count(&models.Account{})
 
 		if subAccountsCount <= 1 {

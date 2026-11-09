@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"xorm.io/xorm"
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/datastore"
@@ -36,7 +35,7 @@ var SavingsGoals = &SavingsGoalService{
 
 // locateGoal returns the shard and row holding one goal together with the
 // resolved ledger access of the user.
-func (s *SavingsGoalService) locateGoal(c core.Context, uid, goalId int64, capability func(models.FamilyMemberRole) bool) (*datastore.Database, *models.SavingsGoal, error) {
+func (s *SavingsGoalService) locateGoal(c core.Context, uid, goalId int64, capability func(models.FamilyMemberRole) bool) (datastore.Database, *models.SavingsGoal, error) {
 	if uid <= 0 || goalId <= 0 {
 		return nil, nil, errs.ErrParameterInvalid
 	}
@@ -123,7 +122,7 @@ func (s *SavingsGoalService) ListSavingsGoals(c core.Context, uid, ledgerId int6
 		return nil, errs.ErrUserIdInvalid
 	}
 
-	var db *datastore.Database
+	var db datastore.Database
 	var query string
 	var args []any
 	if ledgerId == models.DefaultLedgerId {
@@ -332,7 +331,7 @@ func (s *SavingsGoalService) moveFunds(c core.Context, uid int64, request *model
 		TransactionTime: utils.GetMinTransactionTimeFromUnixTime(now),
 		Amount:          request.Amount, Comment: fmt.Sprintf("存钱计划%s「%s」", transferLabel, goal.Name),
 	}
-	err = Transactions.createTransactionWithHooks(c, transaction, nil, nil, func(sess *xorm.Session) error {
+	err = Transactions.createTransactionWithHooks(c, transaction, nil, nil, func(sess datastore.DatabaseSession) error {
 		// Lock the goal row before checking the net saved amount. Concurrent
 		// withdrawals then serialize on the same row in SQL backends.
 		rows, err := sess.ID(goal.SavingsGoalId).Cols("updated_unix_time").Where("deleted=?", false).
@@ -355,7 +354,7 @@ func (s *SavingsGoalService) moveFunds(c core.Context, uid int64, request *model
 
 		_, err = sess.Insert(fund)
 		return err
-	}, func(sess *xorm.Session) error {
+	}, func(sess datastore.DatabaseSession) error {
 		fund.TransactionId = transaction.TransactionId
 		rows, err := sess.ID(fund.SavingsGoalFundId).Cols("transaction_id").Update(fund)
 		if err != nil {
@@ -408,7 +407,7 @@ func (s *SavingsGoalService) ListLedgerAccounts(c core.Context, uid, ledgerId in
 
 // goalFunds returns the movements of one goal from the given shard, newest
 // first.
-func (s *SavingsGoalService) goalFunds(db *datastore.Database, goalId int64) ([]models.SavingsGoalFund, error) {
+func (s *SavingsGoalService) goalFunds(db datastore.Database, goalId int64) ([]models.SavingsGoalFund, error) {
 	funds := make([]models.SavingsGoalFund, 0)
 	err := db.NewSession(nil).
 		Where("goal_id=?", goalId).

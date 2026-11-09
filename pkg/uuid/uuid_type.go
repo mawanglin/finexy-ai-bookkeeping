@@ -30,4 +30,7 @@ const (
 	// already assigned. Both are user uploaded images; sharing a slot only shares
 	// the per-second sequence counter, so generated ids remain unique.
 	UUID_TYPE_CUSTOM_ICON = UUID_TYPE_PICTURE
+	// UUID_TYPE_IMPORT_PRESET shares the template slot for the same reason as
+	// UUID_TYPE_CUSTOM_ICON; import presets are low volume configuration rows.
+	UUID_TYPE_IMPORT_PRESET = UUID_TYPE_TEMPLATE
 )

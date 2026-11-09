@@ -1,5 +1,6 @@
 <template>
-    <v-autocomplete
+    <component
+        :is="componentType"
         class="transaction-tag-autocomplete"
         item-title="name"
         item-value="id"
@@ -7,22 +8,34 @@
         clear-on-select
         persistent-placeholder
         multiple
-        chips
+        :class="{ 'transaction-tag-auto-complete--select-only': !!selectOnly }"
+        :chips="!selectOnly"
         :density="density"
         :variant="variant"
         :closable-chips="!readonly"
         :readonly="readonly"
         :disabled="disabled"
         :label="showLabel ? tt('Tags') : undefined"
-        :placeholder="tt('None')"
+        :placeholder="selectOnly ? tt('Tags') : tt('None')"
         :items="allTagsWithGroupHeader"
         :custom-filter="filterTag"
         :model-value="modelValue"
         v-model:search="tagSearchContent"
+        v-model:menu="menuOpenState"
         @keydown.tab.capture="onTabKeyDown"
         @update:modelValue="updateModelValue"
     >
-        <template #chip="{ props, internalItem }">
+        <template #selection v-if="customSelectionText">
+            <!-- hide the default selection when customSelectionText is provided -->
+        </template>
+
+        <template #prepend v-if="customSelectionText">
+            <div class="d-flex align-center text-truncate cursor-pointer" @mousedown="menuOpenState = !menuOpenState">
+                <span class="text-truncate" v-if="customSelectionText">{{ customSelectionText }}</span>
+            </div>
+        </template>
+
+        <template #chip="{ props, internalItem }" v-if="!selectOnly">
             <v-chip :prepend-icon="mdiPound" :text="internalItem.title" v-bind="props"/>
         </template>
 
@@ -59,15 +72,17 @@
                 <v-list-item class="text-body-medium" v-else-if="!tagSearchContent || !allowAddNewTag">{{ tt('No available tag') }}</v-list-item>
             </v-list>
         </template>
-    </v-autocomplete>
+    </component>
 
     <snack-bar ref="snackbar" />
 </template>
 
 <script setup lang="ts">
+import { VAutocomplete } from 'vuetify/components/VAutocomplete';
+import { VSelect } from 'vuetify/components/VSelect';
 import SnackBar from '@/components/desktop/SnackBar.vue';
 
-import { useTemplateRef } from 'vue';
+import { ref, computed, useTemplateRef } from 'vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 import {
@@ -95,6 +110,8 @@ interface DesktopTransactionTagSelectionProps extends CommonTransactionTagSelect
     readonly?: boolean;
     disabled?: boolean;
     showLabel?: boolean;
+    selectOnly?: boolean;
+    customSelectionText?: string;
 }
 
 const props = defineProps<DesktopTransactionTagSelectionProps>();
@@ -114,6 +131,9 @@ const {
 const transactionTagsStore = useTransactionTagsStore();
 
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
+
+const menuOpenState = ref<boolean>(false);
+const componentType = computed<typeof VAutocomplete | typeof VSelect>(() => props.selectOnly ? VSelect : VAutocomplete);
 
 function saveNewTag(tagName: string): void {
     emit('tag:saving', true, tagName);
@@ -192,5 +212,13 @@ function updateModelValue(newValue: string[]) {
 .transaction-tag-autocomplete :deep(.v-chip__close) {
     color: #101828 !important;
     opacity: 1 !important;
+}
+</style>
+
+<style>
+.transaction-tag-auto-complete--select-only.v-input {
+    .v-input__prepend {
+        margin-inline-end: 0;
+    }
 }
 </style>

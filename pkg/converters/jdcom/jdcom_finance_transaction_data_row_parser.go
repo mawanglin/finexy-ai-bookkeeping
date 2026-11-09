@@ -5,6 +5,7 @@ import (
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/converters/datatable"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
+	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/errs"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/log"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/models"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/utils"
@@ -60,16 +61,16 @@ func (p *jdComFinanceTransactionDataRowParser) Parse(ctx core.Context, user *mod
 	if dataRow.GetData(jdComFinanceTransactionTypeColumnName) != jdComFinanceTransactionTypeNameMapping[models.TRANSACTION_TYPE_INCOME] &&
 		dataRow.GetData(jdComFinanceTransactionTypeColumnName) != jdComFinanceTransactionTypeNameMapping[models.TRANSACTION_TYPE_EXPENSE] &&
 		dataRow.GetData(jdComFinanceTransactionTypeColumnName) != jdComFinanceTransactionTypeNameMapping[models.TRANSACTION_TYPE_TRANSFER] {
-		log.Warnf(ctx, "[jdcom_finance_transaction_data_row_parser.Parse] skip parsing transaction in row \"%s\", because type is \"%s\"", rowId, dataRow.GetData(jdComFinanceTransactionTypeColumnName))
-		return nil, false, nil
+		log.Warnf(ctx, "[jdcom_finance_transaction_data_row_parser.Parse] skip parsing transaction in \"%s\", because type is \"%s\"", rowId, dataRow.GetData(jdComFinanceTransactionTypeColumnName))
+		return nil, false, errs.NewImportError(errs.ErrTransactionTypeInvalid, rowId, dataRow.GetData(jdComFinanceTransactionTypeColumnName))
 	}
 
 	statusName := dataRow.GetData(jdComFinanceTransactionStatusColumnName)
 
 	if statusName != jdComFinanceTransactionDataStatusSuccessName &&
 		statusName != jdComFinanceTransactionDataStatusRefundSuccessName {
-		log.Warnf(ctx, "[jdcom_finance_transaction_data_row_parser.Parse] skip parsing transaction in row \"%s\", because status is \"%s\"", rowId, statusName)
-		return nil, false, nil
+		log.Warnf(ctx, "[jdcom_finance_transaction_data_row_parser.Parse] skip parsing transaction in \"%s\", because status is \"%s\"", rowId, statusName)
+		return nil, false, errs.NewImportError(errs.ErrTransactionTypeInvalid, rowId, statusName)
 	}
 
 	data := make(map[datatable.TransactionDataTableColumn]string, len(jdComFinanceTransactionSupportedColumns))
@@ -120,8 +121,8 @@ func (p *jdComFinanceTransactionDataRowParser) Parse(ctx core.Context, user *mod
 			} else if strings.Index(memo, jdComFinanceTransactionMemoRepaymentText) >= 0 { // repayment
 				data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = dataRow.GetData(jdComFinanceTransactionMerchantNameColumnName)
 			} else {
-				log.Warnf(ctx, "[jdcom_finance_transaction_data_row_parser.Parse] skip parsing transaction in row \"%s\", because memo (\"%s\") of this transfer transaction is unknown", rowId, memo)
-				return nil, false, nil
+				log.Warnf(ctx, "[jdcom_finance_transaction_data_row_parser.Parse] skip parsing transaction in \"%s\", because memo (\"%s\") of this transfer transaction is unknown", rowId, memo)
+				return nil, false, errs.NewImportError(errs.ErrTransactionTypeInvalid, rowId, memo)
 			}
 		}
 	}

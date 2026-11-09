@@ -4,8 +4,6 @@ import (
 	"strings"
 	"time"
 
-	"xorm.io/xorm"
-
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/datastore"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/errs"
@@ -230,7 +228,7 @@ func (s *TransactionCategoryService) CreateCategory(c core.Context, category *mo
 	category.CreatedUnixTime = time.Now().Unix()
 	category.UpdatedUnixTime = time.Now().Unix()
 
-	return s.UserDataDB(category.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(category.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		_, err := sess.Insert(category)
 		return err
 	})
@@ -282,7 +280,7 @@ func (s *TransactionCategoryService) CreateCategories(c core.Context, uid int64,
 		}
 	}
 
-	err := s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	err := s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		for i := 0; i < len(allCategories); i++ {
 			category := allCategories[i]
 			_, err := sess.Insert(category)
@@ -310,7 +308,7 @@ func (s *TransactionCategoryService) ModifyCategory(c core.Context, category *mo
 
 	category.UpdatedUnixTime = time.Now().Unix()
 
-	return s.UserDataDB(category.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(category.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		updatedRows, err := sess.ID(category.CategoryId).Cols("parent_category_id", "name", "display_order", "icon", "icon_type", "color", "comment", "hidden", "updated_unix_time").Where("uid=? AND deleted=?", category.Uid, false).Update(category)
 
 		if err != nil {
@@ -336,7 +334,7 @@ func (s *TransactionCategoryService) HideCategory(c core.Context, uid int64, ids
 		UpdatedUnixTime: now,
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		updatedRows, err := sess.Cols("hidden", "updated_unix_time").Where("uid=? AND deleted=?", uid, false).In("category_id", ids).Update(updateModel)
 
 		if err != nil {
@@ -359,7 +357,7 @@ func (s *TransactionCategoryService) ModifyCategoryDisplayOrders(c core.Context,
 		categories[i].UpdatedUnixTime = time.Now().Unix()
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		for i := 0; i < len(categories); i++ {
 			category := categories[i]
 			updatedRows, err := sess.ID(category.CategoryId).Cols("display_order", "updated_unix_time").Where("uid=? AND deleted=?", uid, false).Update(category)
@@ -388,7 +386,7 @@ func (s *TransactionCategoryService) DeleteCategory(c core.Context, uid int64, c
 		DeletedUnixTime: now,
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		var categoryAndSubCategories []*models.TransactionCategory
 		err := sess.Where("uid=? AND deleted=? AND (category_id=? OR parent_category_id=?)", uid, false, categoryId, categoryId).Find(&categoryAndSubCategories)
 
@@ -445,7 +443,7 @@ func (s *TransactionCategoryService) DeleteAllCategories(c core.Context, uid int
 		DeletedUnixTime: now,
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		exists, err := sess.Cols("uid", "deleted", "category_id").Where("uid=? AND deleted=? AND category_id<>?", uid, false, 0).Limit(1).Exist(&models.Transaction{})
 
 		if err != nil {
