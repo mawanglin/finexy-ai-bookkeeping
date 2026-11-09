@@ -356,6 +356,12 @@ body {
     z-index: 4600 !important;
 }
 
+/* Messages raised from an editor dialog must stay readable above it,
+   including the AI recognition dialog (4700). */
+.v-overlay.v-snackbar.v-overlay--active {
+    z-index: 4800 !important;
+}
+
 .v-overlay.finexy-dialog .v-card-title .v-btn--icon {
     color: #101828 !important;
     border-color: #d8dde5 !important;

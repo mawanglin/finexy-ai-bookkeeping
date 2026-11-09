@@ -690,6 +690,21 @@ export const useTransactionsStore = defineStore('transactions', () => {
         });
     }
 
+    /** A normal-category server error means the create was rejected and
+     * rolled back, so the retained request can be released for editing. */
+    async function releaseRejectedTransactionCreate(ledgerId: string, clientSessionId: string): Promise<boolean> {
+        const identity = getTransactionStateIdentity();
+        let released = false;
+        await withTransactionCreateLock(() => {
+            if (!identity || !isUserLogined() || identity !== getTransactionStateIdentity()) return;
+            const pending = getPendingTransactionCreate(ledgerId);
+            if (pending?.clientSessionId !== clientSessionId || pending.receipt) return;
+            clearUserPendingTransactionCreate(ledgerId);
+            released = true;
+        });
+        return released;
+    }
+
     function getCurrentMonthTransactionDailyTotalAmounts(transactions: TransactionInfoResponse[], accountIds: string): TransactionDailyTotalAmounts {
         const monthList: TransactionMonthList = {
             year: 0,
@@ -1968,6 +1983,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
         getCurrentMonthTransactionDailyTotalAmounts,
         getPendingTransactionCreate,
         acknowledgePendingTransactionCreate,
+        releaseRejectedTransactionCreate,
         setTransactionSuitableDestinationAmount,
         updateTransactionListInvalidState,
         updateTransactionReconciliationStatementInvalidState,
