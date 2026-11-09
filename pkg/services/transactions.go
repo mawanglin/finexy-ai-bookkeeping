@@ -745,6 +745,11 @@ func (s *TransactionService) createTransactionWithHooks(c core.Context, transact
 
 // BatchCreateTransactions saves new transactions to database
 func (s *TransactionService) BatchCreateTransactions(c core.Context, uid int64, transactions []*models.Transaction, allTagIds map[int][]int64, processHandler core.TaskProcessUpdateHandler) error {
+	return s.batchCreateTransactionsWithHooks(c, uid, transactions, allTagIds, processHandler, nil, nil)
+}
+
+// Hooks participate in the same transaction as every row and account balance update.
+func (s *TransactionService) batchCreateTransactionsWithHooks(c core.Context, uid int64, transactions []*models.Transaction, allTagIds map[int][]int64, processHandler core.TaskProcessUpdateHandler, before, after func(datastore.DatabaseSession) error) error {
 	now := time.Now().Unix()
 	currentProcess := float64(0)
 	processUpdateStep := int(math.Max(100.0, float64(len(transactions)/100.0)))
@@ -847,6 +852,12 @@ func (s *TransactionService) BatchCreateTransactions(c core.Context, uid int64, 
 	userDataDb := s.UserDataDB(uid)
 
 	return userDataDb.DoTransaction(c, func(sess datastore.DatabaseSession) error {
+		if before != nil {
+			if err := before(sess); err != nil {
+				return err
+			}
+		}
+
 		for i := 0; i < len(transactions); i++ {
 			transaction := transactions[i]
 			transactionTagIndexes := allTransactionTagIndexes[transaction.TransactionId]
@@ -865,6 +876,10 @@ func (s *TransactionService) BatchCreateTransactions(c core.Context, uid int64, 
 				log.Errorf(c, "[transactions.BatchCreateTransactions] failed to create trasaction (datetime: %s, type: %s, amount: %d)", utils.FormatUnixTimeToLongDateTime(transactionUnixTime, transactionTimeZone), transaction.Type, transaction.Amount)
 				return err
 			}
+		}
+
+		if after != nil {
+			return after(sess)
 		}
 
 		return nil

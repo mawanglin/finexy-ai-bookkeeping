@@ -1,6 +1,7 @@
 package api
 
 import (
+	stdjson "encoding/json"
 	"encoding/json/v2"
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
@@ -172,26 +173,18 @@ func (a *ModelContextProtocolAPI) ListToolsHandler(c *core.WebContext, jsonRPCRe
 		return nil, errs.ErrNotPermittedToPerformThisAction
 	}
 
-	enabledTools := core.MCPAllTools
-
-	if context := c.GetTokenContext(); context != "" {
-		var tokenContext models.MCPTokenContext
-		err = json.Unmarshal([]byte(context), &tokenContext)
-
-		if err != nil {
-			log.Errorf(c, "[model_context_protocols.ListToolsHandler] failed to parse token context \"%s\", because %s", context, err.Error())
-			return nil, errs.ErrInvalidToken
-		}
-
-		enabledTools = tokenContext.EnabledTools
+	if tokenContext := c.GetTokenContext(); tokenContext != "" && !stdjson.Valid([]byte(tokenContext)) {
+		return nil, errs.ErrInvalidToken
 	}
+
+	enabledTools := core.ParseAgentAuthorization(c.GetTokenContext()).EnabledToolsMask()
 
 	mcpVersion := a.getMCPVersion(c)
 	toolsInfo := mcp.Container.GetMCPTools()
 	finalToolsInfos := make([]*mcp.MCPTool, 0, len(toolsInfo))
 
 	for i := 0; i < len(toolsInfo); i++ {
-		if !toolsInfo[i].ToolType.IsEnabled(enabledTools) {
+		if !toolsInfo[i].ToolType.IsEnabled(enabledTools) || !c.GetTokenClaims().HasAgentScope(mcp.AgentToolScope(toolsInfo[i].Name)) {
 			continue
 		}
 
@@ -200,6 +193,7 @@ func (a *ModelContextProtocolAPI) ListToolsHandler(c *core.WebContext, jsonRPCRe
 			InputSchema: toolsInfo[i].InputSchema,
 			Title:       toolsInfo[i].Title,
 			Description: toolsInfo[i].Description,
+			Annotations: toolsInfo[i].Annotations,
 		}
 
 		if mcpVersion >= string(mcp.ToolResultStructuredContentMinVersion) {
