@@ -608,6 +608,7 @@ import {
     getLocalDateFromYearDashMonthDashDay
 } from '@/lib/datetime.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
+import type { ErrorResponse } from '@/core/api.ts';
 import {
     getTransactionPrimaryCategoryName,
     getTransactionSecondaryCategoryName
@@ -1305,6 +1306,10 @@ function save(afterAction: AfterSaveAction): void {
     }
 }
 
+function rejectionError(error?: { errorMessage?: string; errorCode?: number }): { error: ErrorResponse } | { message: string } {
+    if (!error?.errorCode) return { message: error?.errorMessage || 'Unable to add transaction' };
+    return { error: { success: false, errorCode: error.errorCode, errorMessage: error.errorMessage ?? '', path: '' } };
+}
 async function saveOrdinary(afterAction: AfterSaveAction): Promise<void> {
     if (loading.value || submitting.value || ordinarySessionInvalid.value) return;
     const serial = editorGeneration, actionSerial = editorActionGeneration, ledgerId = openedLedgerId.value;
@@ -1360,13 +1365,32 @@ async function saveOrdinary(afterAction: AfterSaveAction): Promise<void> {
         }
     } catch (error) {
         if (!actionCurrent()) return;
-        const failure = error as { submission?: PendingTransactionCreate; message?: string; canceled?: boolean };
+        const failure = error as { submission?: PendingTransactionCreate; message?: string; canceled?: boolean; error?: { errorMessage?: string; errorCode?: number } };
+        const rejectedCode = failure.error?.errorCode ?? 0;
+        if (rejectedCode >= 200000 && !failure.submission?.receipt) {
+            // The server answered with a business error, so nothing was created.
+            // Release the request and keep the form editable instead of locking it.
+            const sessionId = failure.submission?.clientSessionId ?? ordinaryPending.value?.clientSessionId ?? clientSessionId.value;
+            try {
+                await transactionsStore.releaseRejectedTransactionCreate(ledgerId, sessionId);
+            } catch {
+                // Keep the retained request when it cannot be released safely.
+            }
+            if (!transactionsStore.getPendingTransactionCreate(ledgerId)) {
+                ordinaryPending.value = null;
+                ordinaryRecoveryError.value = '';
+                clientSessionId.value = generateRandomUUID();
+                snackbar.value?.showError(rejectionError(failure.error));
+                return;
+            }
+        }
         try {
             assertOpenedIdentity();
             const current = transactionsStore.getPendingTransactionCreate(ledgerId);
             const pending = failure.submission?.receipt && (!current || current.clientSessionId === failure.submission.clientSessionId) ? failure.submission : current ?? failure.submission;
             if (pending) restoreOrdinaryPending(pending);
-            ordinaryRecoveryError.value = failure.message || '未能核对原记账结果，请保留原请求后重试';
+            ordinaryRecoveryError.value = failure.message || (failure.error?.errorMessage ? `服务器返回：${failure.error.errorMessage}` : '未能核对原记账结果，请保留原请求后重试');
+            if (failure.error) snackbar.value?.showError(rejectionError(failure.error));
         } catch (reason) {
             ordinarySessionInvalid.value = true;
             ordinaryRecoveryError.value = reason instanceof Error ? reason.message : '无法读取原请求，请保留原记录后重新打开';
