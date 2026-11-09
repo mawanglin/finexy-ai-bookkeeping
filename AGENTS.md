@@ -340,7 +340,9 @@ docker stop finexy-android-e2e
 1. **桌面 Web**：首页“记录支出 / 收入”按账本角色放开，普通成员及以上可记账，只读成员给明确提示；账户页和首页的新建、编辑账户对所有者和管理员开放。`AccountEditDialog` 增加 `ledgerId` 属性，`Account.toCreateRequest` 携带账本。
 2. **服务端**：新增 `AccountService.GetManagedAccountDataUid`，账户读取、修改、隐藏先校验 `CanManage` 并换算为账本所有者 uid，管理员因此能操作所有者名下的共享账户。`CreateAccounts` 把共享账户的 `Uid` 固定为账本所有者，否则管理员建的账户在成员记账时找不到；修改时新增的子账户及其期初流水继承 `LedgerId`。
 
-验证：`go test ./...` CGO 开/关通过，新增 `TestLedgerAdminManagesOwnerAccountsAndMemberCannot`；`npm run check` 通过（39331 项与生产构建）。隔离本地服务（临时 SQLite，端口 18102，已停止删除）上所有者、管理员、普通成员、只读成员 19 项接口和真实浏览器检查通过，Agent 22 项、账单导入 10 项及主流程回归通过。**未完成**：移动 Web 和 Android 的共享账本账户管理仍未开放，Android 未改动；8080 运行服务未部署。
+验证：`go test ./...` CGO 开/关通过，新增 `TestLedgerAdminManagesOwnerAccountsAndMemberCannot`；`npm run check` 通过（39331 项与生产构建）。隔离本地服务（临时 SQLite，端口 18102，已停止删除）上所有者、管理员、普通成员、只读成员 19 项接口和真实浏览器检查通过，Agent 22 项、账单导入 10 项及主流程回归通过。8080 运行服务未部署。
+
+后续补齐移动端：移动 Web 账户页按角色向所有者和管理员开放新建、编辑，`supportsMobileLedgerRoute` 放开 `/account/add`、`/account/edit`；排序、删除仍只在默认账本。Android 账户页对所有者和管理员开放新建、编辑、停用、恢复、删除，排序仍只在默认账本；共享账本写操作通过 `runLedgerAccountAction` 完成后全量同步刷新缓存，写入成功但同步失败时提示勿重复操作的结果。验证：手机视口真实浏览器的所有者、管理员、普通成员检查通过，`npm run check` 39327 项通过，Android `assembleDebug`/`assembleDebugAndroidTest`/`lintDebug` 通过，单元测试 273 项通过。**未完成**：Android 共享账户操作未在模拟器或真机运行。
 
 ### 阶段 E
 

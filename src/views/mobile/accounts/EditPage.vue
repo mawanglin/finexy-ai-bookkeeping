@@ -661,8 +661,6 @@ import { useAccountEditPageBase } from '@/views/base/accounts/AccountEditPageBas
 
 import { useAccountsStore } from '@/stores/account.ts';
 import { useLedgersStore } from '@/stores/ledger.ts';
-import { DefaultLedgerId } from '@/models/ledger.ts';
-import { mobileLedgerUnsupportedMessage } from '@/lib/mobile_ledger.ts';
 import LedgerContextNotice from '@/components/mobile/LedgerContextNotice.vue';
 
 import { itemAndIndex } from '@/core/base.ts';
@@ -739,7 +737,7 @@ const {
 const accountsStore = useAccountsStore();
 const ledgersStore = useLedgersStore();
 const editLedgerId = ledgersStore.selectedLedgerId;
-const ledgerContextChanged = computed(() => ledgersStore.selectedLedgerId !== editLedgerId || editLedgerId !== DefaultLedgerId);
+const ledgerContextChanged = computed(() => ledgersStore.selectedLedgerId !== editLedgerId);
 
 const DEFAULT_ACCOUNT_CONTEXT: AccountContext = {
     showIconSelectionSheet: false,
@@ -820,12 +818,13 @@ function init(): void {
             }
         });
     } else {
+        account.value.ledgerId = editLedgerId;
         loading.value = false;
     }
 }
 
 function save(): void {
-    if (ledgerContextChanged.value) { showToast(mobileLedgerUnsupportedMessage); return; }
+    if (ledgerContextChanged.value) { showToast('账本已切换，请返回原账本重新打开账户编辑'); return; }
     const router = props.f7router;
     const problemMessage = inputEmptyProblemMessage.value;
 
