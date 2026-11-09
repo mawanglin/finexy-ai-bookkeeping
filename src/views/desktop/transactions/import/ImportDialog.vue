@@ -1,5 +1,7 @@
 <template>
-    <v-dialog class="finexy-dialog finexy-dialog--import" :persistent="!!persistent || loading || loadingPreset || submitting || currentStep !== 'uploadFile' || isModifiedInUploadStep" v-model="showState">
+    <v-dialog class="finexy-dialog finexy-dialog--import"
+              :max-width="currentStep === 'checkData' || currentStep === 'defineColumn' || currentStep === 'executeCustomScript' ? 1200 : 780"
+              :persistent="!!persistent || loading || loadingPreset || submitting || currentStep !== 'uploadFile' || isModifiedInUploadStep" v-model="showState">
         <one-column-dialog-layout :class="{ 'import-transaction-dialog-layout': currentStep === 'defineColumn' || currentStep === 'checkData' }"
                                   :content-class="currentStep === 'defineColumn' || currentStep === 'checkData' ? 'pa-0 import-transaction-dialog-content' : 'pa-0'"
                                   :title="tt('Import Transactions')" :cancel-button-title="currentStep === 'finalResult' ? tt('Close') : tt('Cancel')"
