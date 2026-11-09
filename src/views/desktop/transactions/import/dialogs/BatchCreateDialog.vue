@@ -1,5 +1,5 @@
 <template>
-    <v-dialog width="600" :persistent="submitting || !!selectedNames.length" v-model="showState">
+    <v-dialog class="finexy-dialog finexy-subdialog finexy-dialog--import" width="600" :persistent="submitting || !!selectedNames.length" v-model="showState">
         <one-column-dialog-layout content-class="pa-0"
                                   :title="title" :cancel-button-title="tt('Cancel')"
                                   :disabled="submitting"

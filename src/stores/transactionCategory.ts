@@ -674,6 +674,7 @@ export const useTransactionCategoriesStore = defineStore('transactionCategories'
         // states
         allTransactionCategories,
         allTransactionCategoriesMap,
+        loadedLedgerId,
         transactionCategoryListStateInvalid,
         // computed states
         allAvailablePrimaryCategoriesCount,

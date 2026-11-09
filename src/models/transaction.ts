@@ -613,6 +613,7 @@ export interface TransactionCreateBatchRequest {
 }
 
 export interface TransactionImportRequest {
+    readonly ledgerId?: string;
     readonly transactions: TransactionCreateRequest[];
     readonly clientSessionId: string;
 }

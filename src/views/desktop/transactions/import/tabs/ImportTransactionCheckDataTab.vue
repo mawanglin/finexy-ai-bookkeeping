@@ -1,5 +1,6 @@
 <template>
     <div class="import-transaction-table-container d-flex flex-column">
+        <StatementMappingPanel v-if="importTransactions?.length" :rows="importTransactions" :accounts="allAccountsMap" :categories="allCategoriesMap" :ledger-id="ledgerId" :file-type="fileType" :disabled="disabled || !!editingTransaction" @mapped="updateAllTransactionsIsValid" @busy="mappingBusy = $event" />
         <v-data-table
             fixed-header
             fixed-footer
@@ -420,6 +421,7 @@
 </template>
 
 <script setup lang="ts">
+import StatementMappingPanel from '@/components/common/StatementMappingPanel.vue';
 import PaginationButtons from '@/components/desktop/PaginationButtons.vue';
 import SnackBar from '@/components/desktop/SnackBar.vue';
 import BatchReplaceDialog, { type BatchReplaceDialogDataType } from '../dialogs/BatchReplaceDialog.vue';
@@ -530,6 +532,8 @@ interface ImportTransactionCheckDataMenu {
 
 const props = defineProps<{
     importTransactions?: ImportTransaction[]
+    ledgerId?: string;
+    fileType?: string;
     disabled?: boolean;
 }>();
 
@@ -621,7 +625,8 @@ const hasVisibleExpenseCategories = computed<boolean>(() => transactionCategorie
 const hasVisibleIncomeCategories = computed<boolean>(() => transactionCategoriesStore.hasVisibleIncomeCategories);
 const hasVisibleTransferCategories = computed<boolean>(() => transactionCategoriesStore.hasVisibleTransferCategories);
 
-const isEditing = computed<boolean>(() => !!editingTransaction.value);
+const mappingBusy = ref(false);
+const isEditing = computed<boolean>(() => !!editingTransaction.value || mappingBusy.value);
 const canImport = computed<boolean>(() => selectedImportTransactionCount.value > 0 && selectedInvalidTransactionCount.value < 1);
 
 const filterMenus = computed<ImportTransactionCheckDataMenuGroup[]>(() => [

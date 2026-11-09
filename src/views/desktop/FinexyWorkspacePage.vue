@@ -146,6 +146,7 @@
                             <span>{{ config.description }}</span>
                         </div>
                         <div>
+                            <button v-if="pageKey === 'activity' && selectedLedgerCanWrite && isDataImportingEnabled()" class="secondary" :disabled="busy" @click="importStatement()">导入账单</button>
                             <button
                                 v-if="pageKey !== 'rates'"
                                 class="secondary"
@@ -2333,6 +2334,7 @@
         <AccountEditDialog ref="accountEditDialog" />
         <CategoryEditDialog ref="categoryEditDialog" />
         <ConfirmDialog ref="confirmDialog" />
+        <ImportDialog ref="statementImportDialog" :persistent="true" />
     </div>
 </template>
 
@@ -2356,6 +2358,8 @@ import CategoryEditDialog from "@/views/desktop/categories/list/dialogs/EditDial
 import ConfirmDialog from "@/components/desktop/ConfirmDialog.vue";
 import GlobalLedgerSwitcher from "@/components/desktop/GlobalLedgerSwitcher.vue";
 import AgentAccessPanel from "@/components/common/AgentAccessPanel.vue";
+import ImportDialog from "@/views/desktop/transactions/import/ImportDialog.vue";
+import { isDataImportingEnabled } from "@/lib/server_settings.ts";
 import { useAccountsStore } from "@/stores/account.ts";
 import { useTransactionCategoriesStore } from "@/stores/transactionCategory.ts";
 import { useTransactionTagsStore } from "@/stores/transactionTag.ts";
@@ -2590,6 +2594,7 @@ const categoryEditDialog =
     useTemplateRef<CategoryDialogType>("categoryEditDialog");
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
 const confirmDialog = useTemplateRef<ConfirmDialogType>("confirmDialog");
+const statementImportDialog = useTemplateRef<InstanceType<typeof ImportDialog>>("statementImportDialog");
 const accountsStore = useAccountsStore();
 const categoriesStore = useTransactionCategoriesStore();
 const tagsStore = useTransactionTagsStore();
@@ -4002,6 +4007,14 @@ function transactionToItem(transaction: Transaction): Item {
         month: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
         raw: transaction,
     };
+}
+function importStatement(fileType?: string): void {
+    if (busy.value || !selectedLedgerCanWrite.value || !isDataImportingEnabled()) return;
+    statementImportDialog.value?.open(fileType).then(() => {
+        void loadPageData(false, false);
+    }).catch((error: unknown) => {
+        if (error) showError(error);
+    });
 }
 function refresh() {
     void loadPageData(true);
