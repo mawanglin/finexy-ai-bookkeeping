@@ -344,6 +344,10 @@ docker stop finexy-android-e2e
 
 后续补齐移动端：移动 Web 账户页按角色向所有者和管理员开放新建、编辑，`supportsMobileLedgerRoute` 放开 `/account/add`、`/account/edit`；排序、删除仍只在默认账本。Android 账户页对所有者和管理员开放新建、编辑、停用、恢复、删除，排序仍只在默认账本；共享账本写操作通过 `runLedgerAccountAction` 完成后全量同步刷新缓存，写入成功但同步失败时提示勿重复操作的结果。验证：手机视口真实浏览器的所有者、管理员、普通成员检查通过，`npm run check` 39327 项通过，Android `assembleDebug`/`assembleDebugAndroidTest`/`lintDebug` 通过，单元测试 273 项通过。**未完成**：Android 共享账户操作未在模拟器或真机运行。
 
+### 桌面添加二级分类（2026-11-09）
+
+Finexy 用工作台页面替换了上游的分类页，原来新建二级分类的入口没有接过来，桌面只能建一级分类。现在分类详情的“子分类”区新增“+ 添加子分类”，打开分类弹窗时带上当前一级分类的 ID、类型、颜色和图标。验证：`npm run check` 通过；隔离本地服务真实浏览器在支出“餐饮”和收入“工资”下各新增一个子分类，接口回读 `parentId` 与类型正确，详情立即显示，无脚本错误。
+
 ### 阶段 E
 
 完成 TalkBack、最大字体、多尺寸/横屏、主题语义色、导航一致性；将 lint、Room migration、关键 instrumentation 和发布签名验证纳入 CI；生成并验证 release APK/AAB。生物识别成功路径需在已录入指纹的设备上人工验收。

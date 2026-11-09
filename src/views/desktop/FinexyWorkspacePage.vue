@@ -1805,6 +1805,9 @@
                                 >{{ child.name }}</button>
                             </div>
                             <p v-else>该一级分类还没有子分类。</p>
+                            <button type="button" class="category-child-add"
+                                    :aria-label="`为「${selectedCategory.name}」添加子分类`"
+                                    @click="addSubCategory(selectedCategory)">+ 添加子分类</button>
                         </section>
                         <div v-if="selectedAIReviewItem" class="review-source">
                             <small>原始内容</small>
@@ -5065,6 +5068,17 @@ async function submitAccountLedgerEditor() {
     } finally {
         accountLedgerEditorBusy.value = false;
     }
+}
+function addSubCategory(parent: TransactionCategory) {
+    detail.value = null;
+    void nextTick().then(() => categoryEditDialog.value
+        ?.open({ parentId: parent.id, type: parent.type, color: parent.color, icon: parent.icon })
+        .then(() => {
+            return loadPageData(false);
+        })
+        .catch((error) => {
+            if (error) showError(error);
+        }));
 }
 function editSubCategory(category: TransactionCategory) {
     detail.value = null;
@@ -9071,6 +9085,21 @@ dl > div {
 .template-empty .recommended-template-list button small {
     color: #687181;
     font-weight: 500;
+}
+.category-children .category-child-add {
+    margin-top: 10px;
+    padding: 6px 12px;
+    border: 1px dashed #98a2b3;
+    border-radius: 999px;
+    color: #101828;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.category-children .category-child-add:hover {
+    border-color: #4f46e5;
+    color: #4f46e5;
 }
 .category-children {
     margin-top: 18px;
