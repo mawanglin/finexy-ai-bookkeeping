@@ -6,11 +6,17 @@ export const TOKEN_TYPE_API: number = 8;
 export const TOKEN_TYPE_MCP: number = 5;
 
 export interface TokenGenerateAPIRequest {
+    readonly ledgerId?: string;
+    readonly name?: string;
+    readonly scopes?: string[];
     readonly expiresInSeconds: number;
     readonly password: string;
 }
 
 export interface TokenGenerateMCPRequest {
+    readonly ledgerId?: string;
+    readonly name?: string;
+    readonly scopes?: string[];
     readonly enabledTools?: string[];
     readonly expiresInSeconds: number;
     readonly password: string;
@@ -39,6 +45,10 @@ export interface TokenRefreshResponse {
 }
 
 export interface TokenInfoResponse {
+    readonly ledgerId?: string;
+    readonly name?: string;
+    readonly scopes?: string[];
+    readonly expiresAt?: number;
     readonly tokenId: string;
     readonly tokenType: number;
     readonly userAgent: string;

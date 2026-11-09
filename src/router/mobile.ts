@@ -40,6 +40,7 @@ import UserProfilePage from '@/views/mobile/users/UserProfilePage.vue';
 import DataManagementPage from '@/views/mobile/users/DataManagementPage.vue';
 import TwoFactorAuthPage from '@/views/mobile/users/TwoFactorAuthPage.vue';
 import SessionListPage from '@/views/mobile/users/SessionListPage.vue';
+import AgentAccessPage from '@/views/mobile/users/AgentAccessPage.vue';
 
 import CategoryAllPage from '@/views/mobile/categories/AllPage.vue';
 import CategoryListPage from '@/views/mobile/categories/ListPage.vue';
@@ -306,6 +307,11 @@ const routes: Router.RouteParameters[] = [
     {
         path: '/user/2fa',
         async: asyncResolve(TwoFactorAuthPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/user/agent-access',
+        async: asyncResolve(AgentAccessPage),
         beforeEnter: [checkLogin]
     },
     {

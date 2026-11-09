@@ -464,6 +464,12 @@ export default {
     getTokens: (): ApiResponsePromise<TokenInfoResponse[]> => {
         return axios.get<ApiResponse<TokenInfoResponse[]>>('v1/tokens/list.json');
     },
+    getAgentAccess: (): ApiResponsePromise<{ mcpEnabled: boolean, mcpAvailable: boolean }> => {
+        return axios.get('v1/agent/access/get.json');
+    },
+    updateAgentAccess: (mcpEnabled: boolean): ApiResponsePromise<{ mcpEnabled: boolean, mcpAvailable: boolean }> => {
+        return axios.post('v1/agent/access/update.json', { mcpEnabled });
+    },
     generateAPIToken: (req: TokenGenerateAPIRequest): ApiResponsePromise<TokenGenerateAPIResponse> => {
         return axios.post<ApiResponse<TokenGenerateAPIResponse>>('v1/tokens/generate/api.json', req);
     },

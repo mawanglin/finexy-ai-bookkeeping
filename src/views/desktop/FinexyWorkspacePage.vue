@@ -877,6 +877,7 @@
                                         立即导出
                                     </button>
                                 </div></template
+                            ><template v-else-if="selectedSetting === 'Agent 接入'"><AgentAccessPanel ref="agentAccessPanel" /></template
                             ><template
                                 v-else-if="selectedSetting === 'AI 配置'"
                                 ><section
@@ -941,6 +942,7 @@
                                         '数据管理',
                                         '本地服务',
                                         'AI 配置',
+                                        'Agent 接入',
                                     ].includes(selectedSetting)
                                 "
                                 class="primary save"
@@ -2353,6 +2355,7 @@ import AccountEditDialog from "@/views/desktop/accounts/list/dialogs/EditDialog.
 import CategoryEditDialog from "@/views/desktop/categories/list/dialogs/EditDialog.vue";
 import ConfirmDialog from "@/components/desktop/ConfirmDialog.vue";
 import GlobalLedgerSwitcher from "@/components/desktop/GlobalLedgerSwitcher.vue";
+import AgentAccessPanel from "@/components/common/AgentAccessPanel.vue";
 import { useAccountsStore } from "@/stores/account.ts";
 import { useTransactionCategoriesStore } from "@/stores/transactionCategory.ts";
 import { useTransactionTagsStore } from "@/stores/transactionTag.ts";
@@ -3216,6 +3219,7 @@ const accountMenu = [
         color: "#4F46E5",
     },
     { title: "通知设置", meta: "提醒和消息渠道", icon: "通", color: "#F05537" },
+    { title: "Agent 接入", meta: "令牌、账本授权与 MCP", icon: "令", color: "#12141A" },
     { title: "安全设置", meta: "密码与应用锁", icon: "安", color: "#149C63" },
 ];
 const appMenu = [
@@ -3395,7 +3399,11 @@ const currentUserInitial = computed(
 );
 const clientDisplayVersion = getClientDisplayVersion();
 const clientBuildTime = getClientBuildTime();
+const agentAccessPanel = ref<InstanceType<typeof AgentAccessPanel>>();
 const primaryActionLabel = computed(() =>
+    selectedSetting.value === "Agent 接入"
+        ? "刷新令牌"
+        :
     selectedSetting.value === "安全设置"
         ? "切换账号"
         : selectedSetting.value === "数据管理"
@@ -3407,6 +3415,9 @@ const primaryActionLabel = computed(() =>
               : config.value.action,
 );
 const primaryActionIcon = computed(() =>
+    selectedSetting.value === "Agent 接入"
+        ? mdiRefresh
+        :
     selectedSetting.value === "安全设置"
         ? mdiSwapHorizontal
         : selectedSetting.value === "数据管理"
@@ -3601,6 +3612,7 @@ const expenseBreakdown = computed(() => {
 });
 const reportExpenseTotal = computed(() => currentLedgerMonthTotals.value.expense);
 const settingsDescription = computed(() => {
+    if (selectedSetting.value === "Agent 接入") return "管理当前账号的 Agent 授权与 MCP 接入。";
     if (pageKey.value === "account") return "更改会保存到当前个人账本。";
     if (selectedSetting.value === "AI 配置")
         return "在页面中维护服务端 OpenAI 兼容接口，保存后立即生效且重启后保留。";
@@ -5104,6 +5116,10 @@ function postReviewItem() {
         });
 }
 async function saveSettings() {
+    if (selectedSetting.value === "Agent 接入") {
+        await agentAccessPanel.value?.refresh();
+        return;
+    }
     if (saving.value) return;
     if (selectedSetting.value === "个人资料" && !profileName.value) {
         nameTouched.value = true;
