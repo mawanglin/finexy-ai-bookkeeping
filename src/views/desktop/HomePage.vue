@@ -222,8 +222,8 @@
 
     <LedgerPendingDialog v-if="utilityPanel === 'notifications'" @close="utilityPanel = null" @open="openPendingTarget" />
     <snack-bar ref="snackbar" />
-    <TransactionEditDialog ref="transactionEditDialog" :type="TransactionEditPageType.Transaction"/>
-    <AccountEditDialog ref="accountEditDialog"/>
+    <TransactionEditDialog ref="transactionEditDialog" :type="TransactionEditPageType.Transaction" :ledger-id="familyLedgerSelected ? selectedLedgerId : undefined"/>
+    <AccountEditDialog ref="accountEditDialog" :ledger-id="familyLedgerSelected ? selectedLedgerId : undefined"/>
     </div>
 </template>
 
@@ -361,7 +361,7 @@ const homeGreeting = computed<string>(() => {
 const selectedLedgerId = computed<string>(() => ledgersStore.selectedLedgerId);
 const selectedLedgerName = computed<string>(() => ledgersStore.selectedLedger.name);
 const familyLedgerSelected = computed<boolean>(() => selectedLedgerId.value !== DefaultLedgerId);
-const currentLedgerMember = computed(() => ledgersStore.members.find(member => member.isCurrentUser && member.status === 1));
+const currentLedgerMember = computed(() => ledgersStore.members.find(member => member.ledgerId === selectedLedgerId.value && member.isCurrentUser && member.status === 1));
 const ledgerRoleLabel = computed<string>(() => {
     const labels: Record<number, string> = { 1: '所有者', 2: '管理员', 3: '可记账成员', 4: '只读成员' };
     return labels[currentLedgerMember.value?.role ?? 0] ?? '成员';
@@ -549,8 +549,12 @@ function refreshBalance(): void {
 }
 
 function openQuickTransaction(type: number, account?: Account | null): void {
-    if (familyLedgerSelected.value) {
-        snackbar.value?.showMessage('共享账本记账能力正在接入，请先在账本页查看数据与成员');
+    if (familyLedgerSelected.value && !currentLedgerMember.value) {
+        snackbar.value?.showMessage('正在读取你在此账本中的权限，请稍后重试');
+        return;
+    }
+    if (familyLedgerSelected.value && currentLedgerMember.value?.role === 4) {
+        snackbar.value?.showMessage('你在此账本中是只读成员，不能记账');
         return;
     }
     balanceCurrencyMenuOpen.value = false;
@@ -570,8 +574,12 @@ function closeWalletDetails(): void {
 }
 
 function openAccountEditor(account?: Account | null): void {
-    if (familyLedgerSelected.value) {
-        snackbar.value?.showMessage('共享账本账户编辑能力正在接入，请先在账本页管理成员');
+    if (familyLedgerSelected.value && !currentLedgerMember.value) {
+        snackbar.value?.showMessage('正在读取你在此账本中的权限，请稍后重试');
+        return;
+    }
+    if (familyLedgerSelected.value && (currentLedgerMember.value?.role ?? 4) > 2) {
+        snackbar.value?.showMessage('只有账本所有者和管理员可以管理账户');
         return;
     }
     balanceCurrencyMenuOpen.value = false;

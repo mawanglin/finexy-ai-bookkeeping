@@ -112,7 +112,17 @@ func (a *AccountsApi) AccountGetHandler(c *core.WebContext) (any, *errs.Error) {
 	}
 
 	uid := c.GetCurrentUid()
-	accountAndSubAccounts, err := a.accounts.GetAccountAndSubAccountsByAccountId(c, uid, accountGetReq.Id)
+	dataUid, err := a.accounts.GetManagedAccountDataUid(c, uid, accountGetReq.Id)
+
+	if err != nil {
+		if !errs.IsCustomError(err) {
+			log.Errorf(c, "[accounts.AccountGetHandler] failed to check account \"id:%d\" for user \"uid:%d\", because %s", accountGetReq.Id, uid, err.Error())
+		}
+
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	accountAndSubAccounts, err := a.accounts.GetAccountAndSubAccountsByAccountId(c, dataUid, accountGetReq.Id)
 
 	if err != nil {
 		log.Errorf(c, "[accounts.AccountGetHandler] failed to get account \"id:%d\" for user \"uid:%d\", because %s", accountGetReq.Id, uid, err.Error())
@@ -432,7 +442,17 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 		return nil, errs.ErrUserNotFound
 	}
 
-	accountAndSubAccounts, err := a.accounts.GetAccountAndSubAccountsByAccountId(c, uid, accountModifyReq.Id)
+	dataUid, err := a.accounts.GetManagedAccountDataUid(c, uid, accountModifyReq.Id)
+
+	if err != nil {
+		if !errs.IsCustomError(err) {
+			log.Errorf(c, "[accounts.AccountModifyHandler] failed to check account \"id:%d\" for user \"uid:%d\", because %s", accountModifyReq.Id, uid, err.Error())
+		}
+
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	accountAndSubAccounts, err := a.accounts.GetAccountAndSubAccountsByAccountId(c, dataUid, accountModifyReq.Id)
 
 	if err != nil {
 		log.Errorf(c, "[accounts.AccountModifyHandler] failed to get account \"id:%d\" for user \"uid:%d\", because %s", accountModifyReq.Id, uid, err.Error())
@@ -571,7 +591,7 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 
 	if toUpdateAccount != nil {
 		if toUpdateAccount.Category != mainAccount.Category {
-			maxOrderId, err := a.accounts.GetMaxDisplayOrder(c, uid, toUpdateAccount.Category)
+			maxOrderId, err := a.accounts.GetMaxDisplayOrder(c, dataUid, toUpdateAccount.Category)
 
 			if err != nil {
 				log.Errorf(c, "[accounts.AccountModifyHandler] failed to get max display order for user \"uid:%d\", because %s", uid, err.Error())
@@ -607,7 +627,7 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 		if _, exists := accountMap[subAccountReq.Id]; !exists {
 			anythingUpdate = true
 			maxOrderId = maxOrderId + 1
-			newSubAccount := a.createNewSubAccountModelForModify(uid, mainAccount.Type, subAccountReq, subAccountBalances[i], maxOrderId)
+			newSubAccount := a.createNewSubAccountModelForModify(dataUid, mainAccount.Type, subAccountReq, subAccountBalances[i], maxOrderId)
 			toAddAccounts = append(toAddAccounts, newSubAccount)
 
 			if subAccountReq.BalanceTime != nil {
@@ -633,7 +653,7 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 		return nil, errs.ErrNothingWillBeUpdated
 	}
 
-	iconTypeValid := a.isAccountsIconTypeValid(c, uid, slices.Concat(toAddAccounts, toUpdateAccounts))
+	iconTypeValid := a.isAccountsIconTypeValid(c, dataUid, slices.Concat(toAddAccounts, toUpdateAccounts))
 
 	if !iconTypeValid {
 		log.Warnf(c, "[accounts.AccountModifyHandler] icon type invalid for user \"uid:%d\"", uid)
@@ -648,7 +668,7 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 			accountId, err := utils.StringToInt64(remark)
 
 			if err == nil {
-				accountAndSubAccounts, err := a.accounts.GetAccountAndSubAccountsByAccountId(c, uid, accountId)
+				accountAndSubAccounts, err := a.accounts.GetAccountAndSubAccountsByAccountId(c, dataUid, accountId)
 
 				if err != nil {
 					log.Errorf(c, "[accounts.AccountModifyHandler] failed to get existed account \"id:%d\" for user \"uid:%d\", because %s", accountId, uid, err.Error())
@@ -824,7 +844,17 @@ func (a *AccountsApi) AccountHideHandler(c *core.WebContext) (any, *errs.Error) 
 	}
 
 	uid := c.GetCurrentUid()
-	err = a.accounts.HideAccount(c, uid, []int64{accountHideReq.Id}, accountHideReq.Hidden)
+	dataUid, err := a.accounts.GetManagedAccountDataUid(c, uid, accountHideReq.Id)
+
+	if err != nil {
+		if !errs.IsCustomError(err) {
+			log.Errorf(c, "[accounts.AccountHideHandler] failed to check account \"id:%d\" for user \"uid:%d\", because %s", accountHideReq.Id, uid, err.Error())
+		}
+
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	err = a.accounts.HideAccount(c, dataUid, []int64{accountHideReq.Id}, accountHideReq.Hidden)
 
 	if err != nil {
 		log.Errorf(c, "[accounts.AccountHideHandler] failed to hide account \"id:%d\" for user \"uid:%d\", because %s", accountHideReq.Id, uid, err.Error())
@@ -1007,7 +1037,7 @@ func (a *AccountsApi) getToUpdateAccount(user *models.User, accountModifyReq *mo
 
 	newAccount := &models.Account{
 		AccountId:    oldAccount.AccountId,
-		Uid:          user.Uid,
+		Uid:          oldAccount.Uid,
 		Name:         accountModifyReq.Name,
 		DisplayOrder: oldAccount.DisplayOrder,
 		Category:     accountModifyReq.Category,

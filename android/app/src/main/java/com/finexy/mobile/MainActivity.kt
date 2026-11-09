@@ -339,6 +339,7 @@ private fun LedgerContent(store: SecureStore, repository: TransactionRepository,
     val savingsGoals by remember(repository, selectedLedgerId) { repository.observeSavingsGoals(selectedLedgerId) }.collectAsState(initial = emptyList())
     val familyLedgerSelected = selectedLedgerId != LedgerEntity.DEFAULT_LEDGER_ID
     var ledgerCanWrite by remember(selectedLedgerId) { mutableStateOf(!familyLedgerSelected) }
+    var ledgerCanManage by remember(selectedLedgerId) { mutableStateOf(!familyLedgerSelected) }
     var ledgerCategories by remember(selectedLedgerId) { mutableStateOf(emptyList<CategoryEntity>()) }
     var ledgerCategoriesLoading by remember(selectedLedgerId) { mutableStateOf(false) }
     var ledgerCategoriesError by remember(selectedLedgerId) { mutableStateOf<String?>(null) }
@@ -532,12 +533,14 @@ private fun LedgerContent(store: SecureStore, repository: TransactionRepository,
     LaunchedEffect(selectedLedgerId, localMode, ledgerCategoryRetry) {
         if (!familyLedgerSelected || localMode) {
             ledgerCanWrite = !familyLedgerSelected
+            ledgerCanManage = !familyLedgerSelected
             ledgerCategories = emptyList()
             ledgerCategoriesLoading = false
             ledgerCategoriesError = null
             return@LaunchedEffect
         }
         ledgerCanWrite = false
+        ledgerCanManage = false
         ledgerCategories = emptyList()
         ledgerCategoriesLoading = true
         ledgerCategoriesError = null
@@ -545,6 +548,7 @@ private fun LedgerContent(store: SecureStore, repository: TransactionRepository,
             val api = FinexyApi(store)
             val role = api.periodicRole(selectedLedgerId)
             ledgerCanWrite = role in RemoteLedgerMember.ROLE_OWNER..RemoteLedgerMember.ROLE_MEMBER
+            ledgerCanManage = role == RemoteLedgerMember.ROLE_OWNER || role == RemoteLedgerMember.ROLE_ADMIN
             ledgerCategories = api.parseCategoryResponse(api.listCategories(ledgerId = selectedLedgerId)).map { item ->
                 CategoryEntity(item.id, item.name, item.parentId, item.type, item.icon, item.color, item.hidden,
                     comment = item.comment, displayOrder = item.displayOrder)
@@ -633,6 +637,22 @@ private fun LedgerContent(store: SecureStore, repository: TransactionRepository,
     BackHandler(enabled = statementImportPage || preferencesPage || selectedTab != 0) {
         if (statementImportPage) statementImportPage = false else if (preferencesPage) preferencesPage = false else selectedTab = 0
     }
+    // Shared ledger accounts live in the server cache, so a write refreshes through a full sync.
+    fun runLedgerAccountAction(done: String, failure: String, remote: suspend (FinexyApi) -> Unit) {
+        scope.launch {
+            accountActionRunning = true; accountActionMessage = null
+            var written = false
+            runCatching {
+                val api = FinexyApi(store)
+                remote(api)
+                written = true
+                SyncEngine(api, repository, autoUpdateExchangeRates = preferences.autoUpdateExchangeRatesData).sync()
+            }.onSuccess { accountActionMessage = done }
+                .onFailure { accountActionMessage = if (written) "$done，但同步刷新失败：${it.message ?: "请稍后手动同步"}" else "$failure：${it.message ?: "请稍后重试"}" }
+            accountActionRunning = false
+        }
+    }
+
     Scaffold(
         containerColor = CanvasBlack,
         topBar = { if (!localMode && !statementImportPage) LedgerSwitcher(roomLedgers, selectedLedgerId) { ledgerId ->
@@ -869,29 +889,29 @@ private fun LedgerContent(store: SecureStore, repository: TransactionRepository,
                     entryAccountOverride = accountId
                     entryIncome = false
                     selectedTab = 2
-                }, onOpenAssets = onProductAssets, onOpenExchangeRates = onExchangeRates, accountActionsEnabled = !localMode && !familyLedgerSelected, actionRunning = accountActionRunning, actionMessage = accountActionMessage,
-                onCreate = { draft -> scope.launch {
+                }, onOpenAssets = onProductAssets, onOpenExchangeRates = onExchangeRates, accountActionsEnabled = !localMode && (!familyLedgerSelected || ledgerCanManage), actionRunning = accountActionRunning, actionMessage = accountActionMessage,
+                onCreate = { draft -> if (familyLedgerSelected) runLedgerAccountAction("账户已创建", "创建失败") { api -> api.createAccount(draft, selectedLedgerId) } else scope.launch {
                     accountActionRunning = true; accountActionMessage = null
                     runCatching { repository.mergeAccounts(FinexyApi(store).createAccount(draft)) }
                         .onSuccess { accountActionMessage = "账户已创建" }
                         .onFailure { accountActionMessage = "创建失败：${it.message ?: "请稍后重试"}" }
                     accountActionRunning = false
                 } },
-                onModify = { account, draft -> scope.launch {
+                onModify = { account, draft -> if (familyLedgerSelected) runLedgerAccountAction("账户已更新", "更新失败") { api -> api.modifyAccount(account, draft) } else scope.launch {
                     accountActionRunning = true; accountActionMessage = null
                     runCatching { repository.replaceAccountGroup(account.id, FinexyApi(store).modifyAccount(account, draft)) }
                         .onSuccess { accountActionMessage = "账户已更新" }
                         .onFailure { accountActionMessage = "更新失败：${it.message ?: "请稍后重试"}" }
                     accountActionRunning = false
                 } },
-                onHide = { account, hidden -> scope.launch {
+                onHide = { account, hidden -> if (familyLedgerSelected) runLedgerAccountAction(if (hidden) "账户已停用" else "账户已恢复", "操作失败") { api -> api.hideAccount(account.id, hidden) } else scope.launch {
                     accountActionRunning = true; accountActionMessage = null
                     runCatching { FinexyApi(store).hideAccount(account.id, hidden); repository.saveAccounts(listOf(account.copy(hidden = hidden))) }
                         .onSuccess { accountActionMessage = if (hidden) "账户已停用" else "账户已恢复" }
                         .onFailure { accountActionMessage = "操作失败：${it.message ?: "请稍后重试"}" }
                     accountActionRunning = false
                 } },
-                onDelete = { account -> scope.launch {
+                onDelete = { account -> if (familyLedgerSelected) runLedgerAccountAction("账户已删除", "删除失败") { api -> api.deleteAccount(account.id) } else scope.launch {
                     accountActionRunning = true; accountActionMessage = null
                     runCatching { FinexyApi(store).deleteAccount(account.id); repository.removeAccount(account.id) }
                         .onSuccess { accountActionMessage = "账户已删除" }

@@ -711,7 +711,7 @@ internal fun AccountsScreen(padding: PaddingValues, activities: List<Activity>, 
                         if (accountActionsEnabled) {
                             TextButton(onClick = { editingAccount = if (account.parentId == 0L) account else accounts.firstOrNull { it.id == account.parentId } ?: account }, modifier = Modifier.semantics { contentDescription = "编辑${account.name}" }) { Text("编辑") }
                             val index = remoteVisible.indexOfFirst { it.id == account.id }
-                            if (account.parentId == 0L) {
+                            if (account.parentId == 0L && currentLedgerId == LedgerEntity.DEFAULT_LEDGER_ID) {
                                 TextButton(onClick = { if (index > 0) onMove(remoteVisible.toMutableList().apply { add(index - 1, removeAt(index)) }) }, enabled = index > 0 && !actionRunning) { Text("上移") }
                                 TextButton(onClick = { if (index in 0 until remoteVisible.lastIndex) onMove(remoteVisible.toMutableList().apply { add(index + 1, removeAt(index)) }) }, enabled = index in 0 until remoteVisible.lastIndex && !actionRunning) { Text("下移") }
                             }
@@ -751,7 +751,8 @@ internal fun AccountsScreen(padding: PaddingValues, activities: List<Activity>, 
                 showBalance = showBalances,
                 onSetDefault = { onSelectAccount(detailAccount.id) },
                 onEntry = { onEntry(detailAccount.id) },
-                canEdit = !ledgerReadOnly
+                canEdit = !ledgerReadOnly,
+                showReadOnlyNotice = ledgerReadOnly && !accountActionsEnabled
             )
             if (detailAccount.id != TransactionEntity.LOCAL_ACCOUNT_ID && detailAccount.parentId == 0L && ledgerMigrationEnabled && ledgerTargets.isNotEmpty()) {
                 OutlinedButton(onClick = { pendingLedgerMove = detailAccount; ledgerMoveTarget = ledgerTargets.first().id }, enabled = !actionRunning, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = CircleShape) { Text("迁移到账本") }
@@ -839,7 +840,7 @@ private fun accountBalanceMinor(account: AccountEntity, activities: List<Activit
 }
 
 @Composable
-private fun AccountDetailCard(account: AccountEntity, balanceMinor: Long, activities: List<Activity>, isDefault: Boolean, showBalance: Boolean, onSetDefault: () -> Unit, onEntry: () -> Unit, canEdit: Boolean = true) {
+private fun AccountDetailCard(account: AccountEntity, balanceMinor: Long, activities: List<Activity>, isDefault: Boolean, showBalance: Boolean, onSetDefault: () -> Unit, onEntry: () -> Unit, canEdit: Boolean = true, showReadOnlyNotice: Boolean = !canEdit) {
     var range by rememberSaveable(account.id) { mutableStateOf("近 30 天") }
     val days = when (range) { "近 7 天" -> 7; "近 30 天" -> 30; else -> 0 }
     val cutoff = if (days == 0) Long.MIN_VALUE else System.currentTimeMillis() - days * 86_400_000L
@@ -854,7 +855,7 @@ private fun AccountDetailCard(account: AccountEntity, balanceMinor: Long, activi
             Text("${activities.size} 笔历史流水${if (isDefault) " · 默认账户" else ""}", color = Muted, fontSize = 12.sp)
         }
         if (!canEdit) {
-            Surface(color = Coral.copy(alpha = 0.12f), shape = RoundedCornerShape(16.dp)) {
+            if (showReadOnlyNotice) Surface(color = Coral.copy(alpha = 0.12f), shape = RoundedCornerShape(16.dp)) {
                 Text("当前账本账户只读", Modifier.fillMaxWidth().padding(14.dp), color = Coral, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         } else if (isDefault) {

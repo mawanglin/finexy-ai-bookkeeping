@@ -328,6 +328,7 @@ export class Account implements AccountInfoResponse {
             creditCardStatementDate: !parentAccount && this.category === AccountCategory.CreditCard.type ? this.creditCardStatementDate : undefined,
             creditCardLimit: !parentAccount && this.category === AccountCategory.CreditCard.type && this.numericCreditCardLimit > 0 ? this.creditCardLimit : undefined,
             subAccounts: !parentAccount ? subAccountCreateRequests : undefined,
+            ledgerId: !parentAccount && this.ledgerId !== '0' ? this.ledgerId : undefined,
             clientSessionId: !parentAccount ? clientSessionId : undefined
         };
     }
@@ -694,6 +695,7 @@ export class AccountWithDisplayBalance extends Account {
 }
 
 export interface AccountCreateRequest {
+    readonly ledgerId?: string;
     readonly name: string;
     readonly category: number;
     readonly type: number;

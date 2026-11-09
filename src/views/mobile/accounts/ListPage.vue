@@ -6,8 +6,8 @@
                 <f7-link icon-f7="xmark" :class="{ 'disabled': displayOrderSaving }" :aria-label="tt('Cancel')" @click="cancelSort"></f7-link>
             </f7-nav-left>
             <f7-nav-title :title="tt('Account List')"></f7-nav-title>
-            <f7-nav-right v-if="isDefaultLedger" :class="{ 'navbar-compact-icons': true, 'disabled': loading }">
-                <f7-link icon-f7="ellipsis" :class="{ 'disabled': !allAccountCount || sortable }" :aria-label="tt('More')" @click="showMoreActionSheet = true"></f7-link>
+            <f7-nav-right v-if="isDefaultLedger || canEditLedgerAccounts" :class="{ 'navbar-compact-icons': true, 'disabled': loading }">
+                <f7-link icon-f7="ellipsis" :class="{ 'disabled': !allAccountCount || sortable }" :aria-label="tt('More')" @click="showMoreActionSheet = true" v-if="isDefaultLedger"></f7-link>
                 <f7-link icon-f7="plus" href="/account/add" :aria-label="tt('Add')" v-if="!sortable"></f7-link>
                 <f7-link icon-f7="checkmark_alt" :class="{ 'disabled': displayOrderSaving || !displayOrderModified }" :aria-label="tt('Save')" @click="saveSortResult" v-else-if="sortable"></f7-link>
             </f7-nav-right>
@@ -15,7 +15,7 @@
 
         <ledger-context-notice :limited="!isDefaultLedger" />
         <f7-block v-if="loadingError" role="alert">当前账本账户加载失败，请重试。 <f7-link @click="init()">重试</f7-link></f7-block>
-        <f7-block v-if="!isDefaultLedger">账户余额按各账户币种分别展示。点击账户查看当前账本流水。</f7-block>
+        <f7-block v-if="!isDefaultLedger">账户余额按各账户币种分别展示。点击账户查看当前账本流水。{{ canEditLedgerAccounts ? '左滑账户可编辑。' : '' }}</f7-block>
         <div class="margin-top-half margin-bottom" v-if="isDefaultLedger">
             <asset-summary-widget scene="accountList" :loading="loading" :support-hide-account-balance="true" />
         </div>
@@ -139,10 +139,10 @@
                     </f7-swipeout-actions>
                     <f7-swipeout-actions :left="textDirection === TextDirection.RTL"
                                          :right="textDirection === TextDirection.LTR"
-                                         v-if="!sortable && isDefaultLedger">
+                                         v-if="!sortable && (isDefaultLedger || canEditLedgerAccounts)">
                         <f7-swipeout-button color="orange" close :text="tt('Edit')" @click="edit(account)"></f7-swipeout-button>
-                        <f7-swipeout-button color="primary" close :text="tt('More')" @click="showMoreActionSheetForAccount(account)"></f7-swipeout-button>
-                        <f7-swipeout-button color="red" class="padding-horizontal" :aria-label="tt('Delete')" @click="remove(account, false)">
+                        <f7-swipeout-button color="primary" close :text="tt('More')" @click="showMoreActionSheetForAccount(account)" v-if="isDefaultLedger"></f7-swipeout-button>
+                        <f7-swipeout-button color="red" class="padding-horizontal" :aria-label="tt('Delete')" @click="remove(account, false)" v-if="isDefaultLedger">
                             <f7-icon f7="trash"></f7-icon>
                         </f7-swipeout-button>
                     </f7-swipeout-actions>
@@ -246,9 +246,10 @@ import { useRootStore } from '@/stores/index.ts';
 import { useSettingsStore } from '@/stores/setting.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 import { useLedgersStore } from '@/stores/ledger.ts';
-import { DefaultLedgerId } from '@/models/ledger.ts';
+import { DefaultLedgerId, LedgerMemberRole } from '@/models/ledger.ts';
 import LedgerContextNotice from '@/components/mobile/LedgerContextNotice.vue';
-import { mobileLedgerUnsupportedMessage } from '@/lib/mobile_ledger.ts';
+import { mobileLedgerRole, mobileLedgerUnsupportedMessage } from '@/lib/mobile_ledger.ts';
+import services from '@/lib/services.ts';
 
 import { TextDirection } from '@/core/text.ts';
 import { AccountType, AccountCategory, CreditCardAmountDisplayType } from '@/core/account.ts';
@@ -285,6 +286,7 @@ const settingsStore = useSettingsStore();
 const accountsStore = useAccountsStore();
 const ledgersStore = useLedgersStore();
 const isDefaultLedger = computed(() => ledgersStore.selectedLedgerId === DefaultLedgerId);
+const canEditLedgerAccounts = ref<boolean>(false);
 let loadGeneration = 0;
 
 function canManageAccounts(): boolean {
@@ -350,6 +352,15 @@ function reload(done?: () => void): void {
     const generation = ++loadGeneration;
     const ledgerId = ledgersStore.selectedLedgerId;
     loadingError.value = null;
+    canEditLedgerAccounts.value = false;
+    if (ledgerId !== DefaultLedgerId) {
+        // A failed role read leaves editing closed; the account list itself stays available.
+        services.listLedgerMembers({ ledgerId }).then(response => {
+            if (generation !== loadGeneration || ledgerId !== ledgersStore.selectedLedgerId || !response.data?.success) return;
+            const role = mobileLedgerRole(ledgerId, response.data.result);
+            canEditLedgerAccounts.value = role === LedgerMemberRole.Owner || role === LedgerMemberRole.Admin;
+        }).catch(() => undefined);
+    }
     accountsStore.loadAllAccounts({ force: !!done, ledgerId }).then(() => {
         if (generation === loadGeneration && done) showToast('Account list has been updated');
     }).catch(error => {
@@ -375,7 +386,7 @@ watch(() => ledgersStore.selectedLedgerId, () => {
 }, { flush: 'sync' });
 
 function edit(account: Account): void {
-    if (!isDefaultLedger.value) {
+    if (!isDefaultLedger.value && !canEditLedgerAccounts.value) {
         props.f7router.navigate('/transaction/list?accountIds=' + account.id);
         return;
     }

@@ -14,7 +14,7 @@ export function supportsMobileLedgerRoute(path: string, ledgerId: string): boole
     if (ledgerId === DefaultLedgerId) return true;
     const pathname = (path.split(/[?#]/)[0] || '/').replace(/\/+$/, '').toLowerCase() || '/';
     if (pathname === '/statistic/transaction') return true;
-    return !(/^\/account\/(add|edit|reconciliation_statements|move_all_transactions)$/.test(pathname) ||
+    return !(/^\/account\/(reconciliation_statements|move_all_transactions)$/.test(pathname) ||
         /^\/(statistic|category|tag)(\/|$)/.test(pathname) ||
         /^\/settings\/filter\/(account|category|tag)$/.test(pathname) ||
         /^\/user\/data(\/|$)/.test(pathname));
@@ -127,4 +127,4 @@ export function mobileTagSelectionProblem(tagIds: readonly string[], tags: Recor
     return tagIds.some(id => !tags[id] || tags[id].hidden) ? '所选标签已不可用，请重新选择' : null;
 }
 
-export const mobileLedgerUnsupportedMessage = '当前移动版本支持此账本的收支、转账、流水管理、月度预算、模板、周期待确认和账本报告；账户管理和高级账户分析暂不支持。标签与附件遵守账本所有者边界。';
+export const mobileLedgerUnsupportedMessage = '当前移动版本支持此账本的收支、转账、流水管理、月度预算、模板、周期待确认和账本报告；所有者和管理员可新建、编辑账户；账户排序、删除和高级账户分析暂不支持。标签与附件遵守账本所有者边界。';

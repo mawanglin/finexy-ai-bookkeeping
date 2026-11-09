@@ -270,6 +270,8 @@ interface AccountEditResponse {
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
 type SnackBarType = InstanceType<typeof SnackBar>;
 
+const props = defineProps<{ ledgerId?: string }>();
+
 const { tt } = useI18n();
 const {
     defaultAccountCategory,
@@ -366,6 +368,7 @@ function open(options?: { id?: string, currentAccount?: Account, category?: numb
     }
 
     initAccount.value = Account.createNewAccount(initAccountCategory.value, userStore.currentUserDefaultCurrency, getCurrentUnixTimeForNewAccount());
+    initAccount.value.ledgerId = props.ledgerId ?? '0';
     account.value.fillFrom(initAccount.value);
     subAccounts.value = [];
     currentAccountIndex.value = -1;

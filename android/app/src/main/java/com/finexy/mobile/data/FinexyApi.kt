@@ -103,8 +103,8 @@ class FinexyApi(private val store: SecureStore) {
         "v1/accounts/list.json?with_balance=true" + if (ledgerId > 0) "&ledgerId=$ledgerId" else ""
     )
 
-    suspend fun createAccount(draft: AccountDraft): List<RemoteAccount> = parseWrittenAccounts(
-        request("v1/accounts/add.json", draft.toCreatePayload().toString())
+    suspend fun createAccount(draft: AccountDraft, ledgerId: Long = 0): List<RemoteAccount> = parseWrittenAccounts(
+        request("v1/accounts/add.json", accountCreatePayload(draft, ledgerId).toString())
     )
 
     suspend fun modifyAccount(account: AccountEntity, draft: AccountDraft): List<RemoteAccount> {
@@ -1093,6 +1093,11 @@ data class AccountDraft(
         if (type == 2 && !isChild) payload.put("subAccounts", JSONArray().apply { subAccounts.forEach { put(it.copy(category = category, type = 1).toCreatePayload(true)) } })
         return payload
     }
+}
+
+internal fun accountCreatePayload(draft: AccountDraft, ledgerId: Long): JSONObject {
+    require(ledgerId >= 0) { "账本无效" }
+    return draft.toCreatePayload().apply { if (ledgerId > 0) put("ledgerId", ledgerId.toString()) }
 }
 
 internal fun defaultAccountIcon(category: Int): Long = when (category) { 1 -> 1; 4 -> 500; 5 -> 600; 6 -> 700; 7 -> 800; 9 -> 110; else -> 100 }
