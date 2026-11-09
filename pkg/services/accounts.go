@@ -86,6 +86,16 @@ var (
 	}
 )
 
+// GetManagedAccountDataUid checks that the user may manage the account and returns the uid that owns its data
+func (s *AccountService) GetManagedAccountDataUid(c core.Context, uid int64, accountId int64) (int64, error) {
+	_, _, accounts, err := s.locateAccountGroupForManage(c, uid, accountId)
+	if err != nil {
+		return 0, err
+	}
+
+	return accounts[0].Uid, nil
+}
+
 // GetTotalAccountCountByUid returns total account count of user
 func (s *AccountService) GetTotalAccountCountByUid(c core.Context, uid int64) (int64, error) {
 	if uid <= 0 {
@@ -351,6 +361,8 @@ func (s *AccountService) CreateAccounts(c core.Context, mainAccount *models.Acco
 			return err
 		}
 		userDataDb = db
+		// Shared accounts belong to the ledger owner, so any later member posting finds them.
+		mainAccount.Uid = postingUid
 	}
 
 	allAccounts := make([]*models.Account, len(childrenAccounts)+1)
@@ -518,6 +530,7 @@ func (s *AccountService) ModifyAccounts(c core.Context, mainAccount *models.Acco
 			childAccount.AccountId = newAccountUuids[i]
 			childAccount.ParentAccountId = mainAccount.AccountId
 			childAccount.Uid = mainAccount.Uid
+			childAccount.LedgerId = mainAccount.LedgerId
 			childAccount.Type = models.ACCOUNT_TYPE_SINGLE_ACCOUNT
 			childAccount.Deleted = false
 			childAccount.CreatedUnixTime = now
@@ -543,6 +556,9 @@ func (s *AccountService) ModifyAccounts(c core.Context, mainAccount *models.Acco
 				newTransaction := &models.Transaction{
 					TransactionId:        transactionId,
 					Uid:                  childAccount.Uid,
+					LedgerId:             childAccount.LedgerId,
+					RecorderUid:          childAccount.Uid,
+					PayerUid:             childAccount.Uid,
 					Deleted:              false,
 					Type:                 models.TRANSACTION_DB_TYPE_MODIFY_BALANCE,
 					TransactionTime:      transactionTime,

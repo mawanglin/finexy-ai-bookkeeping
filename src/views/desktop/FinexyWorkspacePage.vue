@@ -2350,7 +2350,7 @@
             :type="TransactionEditPageType.Template"
             :ledger-id="selectedLedgerId === DefaultLedgerId ? undefined : selectedLedgerId"
         />
-        <AccountEditDialog ref="accountEditDialog" />
+        <AccountEditDialog ref="accountEditDialog" :ledger-id="selectedLedgerId === DefaultLedgerId ? undefined : selectedLedgerId" />
         <CategoryEditDialog ref="categoryEditDialog" />
         <ConfirmDialog ref="confirmDialog" />
         <AIReviewSourceDialog ref="aiSourceDialog" @complete="sourceCompleted" @closed="refreshAIRecovery" />
@@ -4852,8 +4852,8 @@ function primaryAction() {
         return;
     }
     if (pageKey.value === "manage") {
-        if (selectedLedgerId.value !== DefaultLedgerId) {
-            showToast("家庭账本账户当前为只读浏览");
+        if (!selectedLedgerCanManage.value) {
+            showToast("只有账本所有者和管理员可以管理账户");
             return;
         }
         accountEditDialog.value
@@ -4997,8 +4997,8 @@ async function createItem() {
     }
 }
 function editAccount() {
-    if (selectedLedgerId.value !== DefaultLedgerId) {
-        showToast("家庭账本账户当前为只读浏览");
+    if (!selectedLedgerCanManage.value) {
+        showToast("只有账本所有者和管理员可以管理账户");
         return;
     }
     if (!selectedAccount.value) {

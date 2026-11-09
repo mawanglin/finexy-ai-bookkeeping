@@ -270,3 +270,43 @@ func TestLedgerDeleteRequiresOwnerAndEmptyLedger(t *testing.T) {
 	require.ErrorIs(t, err, errs.ErrLedgerNotFound)
 	require.ErrorIs(t, Ledgers.DeleteLedger(nil, 100, models.DefaultLedgerId), errs.ErrLedgerAccessDenied)
 }
+
+func TestLedgerAdminManagesOwnerAccountsAndMemberCannot(t *testing.T) {
+	initFamilyTestEnvironment(t)
+	ledger, err := Ledgers.CreateLedger(nil, 100, &models.LedgerCreateRequest{Type: models.LEDGER_TYPE_PERSONAL, Name: "Shared accounts"})
+	require.NoError(t, err)
+	for _, member := range []struct {
+		uid  int64
+		role models.FamilyMemberRole
+	}{{200, models.FAMILY_MEMBER_ROLE_MEMBER}, {300, models.FAMILY_MEMBER_ROLE_ADMIN}} {
+		invite, err := Ledgers.CreateInvitation(nil, 100, &models.LedgerInvitationCreateRequest{LedgerId: ledger.LedgerId, InviteeName: "member", Role: models.FAMILY_MEMBER_ROLE_MEMBER})
+		require.NoError(t, err)
+		_, err = Ledgers.AcceptInvitation(nil, member.uid, invite.Token)
+		require.NoError(t, err)
+		if member.role == models.FAMILY_MEMBER_ROLE_ADMIN {
+			members, err := Ledgers.ListMembers(nil, 100, ledger.LedgerId)
+			require.NoError(t, err)
+			for _, row := range members {
+				if row.Uid == member.uid {
+					_, err = Ledgers.ChangeMemberRole(nil, 100, &models.LedgerMemberRoleChangeRequest{LedgerId: ledger.LedgerId, MemberId: row.Id, Role: member.role})
+					require.NoError(t, err)
+				}
+			}
+		}
+	}
+
+	created := &models.Account{Uid: 300, LedgerId: ledger.LedgerId, Name: "Admin created", Category: models.ACCOUNT_CATEGORY_CASH, Type: models.ACCOUNT_TYPE_SINGLE_ACCOUNT, Currency: "CNY", Icon: 1, Color: "000000"}
+	require.NoError(t, Accounts.CreateAccounts(nil, created, 0, nil, nil, time.UTC))
+	require.Equal(t, int64(100), created.Uid)
+
+	for _, manager := range []int64{100, 300} {
+		dataUid, err := Accounts.GetManagedAccountDataUid(nil, manager, created.AccountId)
+		require.NoError(t, err)
+		require.Equal(t, int64(100), dataUid)
+	}
+	_, err = Accounts.GetManagedAccountDataUid(nil, 200, created.AccountId)
+	require.ErrorIs(t, err, errs.ErrLedgerAccessDenied)
+	_, err = Accounts.GetManagedAccountDataUid(nil, 400, created.AccountId)
+	require.ErrorIs(t, err, errs.ErrLedgerAccessDenied)
+}
+
