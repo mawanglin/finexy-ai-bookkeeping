@@ -56,6 +56,7 @@ import TagGroupListPage from '@/views/mobile/tags/GroupListPage.vue';
 import TemplateListPage from '@/views/mobile/templates/ListPage.vue';
 import LedgerListPage from '@/views/mobile/ledgers/ListPage.vue';
 import SavingsGoalListPage from '@/views/mobile/savings/ListPage.vue';
+import ProductAssetListPage from '@/views/mobile/assets/ListPage.vue';
 import MonthlyBudgetPage from '@/views/mobile/settings/MonthlyBudgetPage.vue';
 import LedgerOperationUnavailablePage from '@/components/mobile/LedgerOperationUnavailablePage.vue';
 import LedgerSelectionErrorPage from '@/components/mobile/LedgerSelectionErrorPage.vue';
@@ -443,6 +444,11 @@ const routes: Router.RouteParameters[] = [
     {
         path: '/family/manage',
         redirect: '/ledger/manage'
+    },
+    {
+        path: '/product/assets',
+        async: asyncResolve(ProductAssetListPage),
+        beforeEnter: [checkLogin]
     },
     {
         path: '/savings/goals',

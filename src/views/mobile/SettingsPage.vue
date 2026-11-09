@@ -12,6 +12,7 @@
             <f7-list-item title="周期待确认与已忽略" link="/schedule/review" v-if="isUserScheduledTransactionEnabled()"></f7-list-item>
             <f7-list-item title="账本管理" link="/ledger/manage"></f7-list-item>
             <f7-list-item title="存钱计划" link="/savings/goals"></f7-list-item>
+            <f7-list-item title="产品资产" link="/product/assets"></f7-list-item>
             <f7-list-item title="月度预算" link="/settings/budget"></f7-list-item>
             <f7-list-item :title="tt('Data Management')" link="/user/data/management"></f7-list-item>
             <f7-list-item :title="tt('Two-Factor Authentication')" link="/user/2fa"></f7-list-item>
