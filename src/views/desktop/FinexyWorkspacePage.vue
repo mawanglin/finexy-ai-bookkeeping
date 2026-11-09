@@ -1779,10 +1779,14 @@
                         <section v-if="selectedCategory" class="category-children">
                             <small>子分类</small>
                             <div v-if="selectedCategory.subCategories?.length">
-                                <span
+                                <button
                                     v-for="child in selectedCategory.subCategories"
                                     :key="child.id"
-                                >{{ child.name }}</span>
+                                    type="button"
+                                    class="category-child-edit"
+                                    :title="`编辑子分类「${child.name}」`"
+                                    @click="editSubCategory(child)"
+                                >{{ child.name }}</button>
                             </div>
                             <p v-else>该一级分类还没有子分类。</p>
                         </section>
@@ -2387,6 +2391,7 @@ import { getCnyValueForCurrency } from "@/lib/exchange_rate.ts";
 import { AMOUNT_FACTOR } from "@/consts/numeral.ts";
 import { getCurrentUnixTime } from "@/lib/datetime.ts";
 import services from "@/lib/services.ts";
+import { buildCategoryCatalog, categoryEditPayload, filterCatalogItems, flattenTransactionCategories } from "@/lib/category_catalog.ts";
 import { parseBigDecimal } from "@/lib/numeral.ts";
 import logger from "@/lib/logger.ts";
 import { getClientDisplayVersion, getClientBuildTime } from "@/lib/version.ts";
@@ -3102,28 +3107,14 @@ const schedules = computed(() => {
         }));
     return live;
 });
-const categories = computed<Item[]>(() => {
-    const flat = Object.values(
-        categoriesStore.allTransactionCategories,
-    ).flat();
-    const live = flat
-        .slice(0, 8)
-        .map((item) => ({
-            title: item.name,
-            meta: item.comment || `${item.subCategories?.length || 0} 个子分类`,
-            amount: item.visible ? "使用中" : "已隐藏",
-            status: item.visible ? "正常" : "已隐藏",
-            tone: (item.visible ? "success" : "warning") as Tone,
-            icon: item.name.slice(0, 1),
-            color: String(item.color),
-            raw: item,
-        }));
-    return live;
-});
+const categories = computed<Item[]>(() =>
+    buildCategoryCatalog(
+        flattenTransactionCategories(categoriesStore.allTransactionCategories),
+    ),
+);
 const tags = computed<Item[]>(() => {
     const colors = ["#F05537", "#4F46E5", "#12141A", "#2E9BFF", "#149C63"];
     const live = Object.values(tagsStore.allTransactionTagsMap)
-        .slice(0, 10)
         .map((item, index) => ({
             title: item.name,
             meta: item.groupId === "0" ? "未分组" : "标签组",
@@ -3141,7 +3132,6 @@ const templates = computed(() => {
     const live = (
         templatesStore.allVisibleTemplates[TemplateType.Normal.type] || []
     )
-        .slice(0, 8)
         .map((item, index) => ({
             title: item.name,
             meta: item.comment || "交易模板",
@@ -3472,8 +3462,9 @@ const selectedCount = computed(
     () => activityTransactions.value.filter((i) => i.selected).length,
 );
 const catalogItems = computed(() =>
-    (pageKey.value === "tags" ? tags.value : categories.value).filter(
-        (i) => !query.value || `${i.title}${i.meta}`.includes(query.value),
+    filterCatalogItems(
+        pageKey.value === "tags" ? tags.value : categories.value,
+        query.value,
     ),
 );
 const sortedSchedules = computed(() =>
@@ -4931,6 +4922,17 @@ async function submitAccountLedgerEditor() {
     } finally {
         accountLedgerEditorBusy.value = false;
     }
+}
+function editSubCategory(category: TransactionCategory) {
+    detail.value = null;
+    void nextTick().then(() => categoryEditDialog.value
+        ?.open(categoryEditPayload(category))
+        .then(() => {
+            return loadPageData(false);
+        })
+        .catch((error) => {
+            if (error) showError(error);
+        }));
 }
 function editDetail() {
     if (!detail.value) return;
@@ -8883,13 +8885,29 @@ dl > div {
     gap: 7px;
     margin-top: 10px;
 }
-.category-children span {
+.category-children span,
+.category-children button {
     padding: 6px 9px;
     border-radius: 999px;
     color: #101828;
     background: #fff;
     font-size: 13px;
     font-weight: 600;
+}
+.category-children button {
+    padding: 6px 9px;
+    border-radius: 999px;
+    color: #101828;
+    background: #fff;
+    font-size: 13px;
+    font-weight: 600;
+}
+.category-children button {
+    border: 1px solid transparent;
+    cursor: pointer;
+}
+.category-children button:hover {
+    border-color: #c7d2fe;
 }
 .template-grid .template-edit {
     min-width: 58px;
@@ -9097,7 +9115,8 @@ dl > div {
     .asset-value strong,
     .calendar-selection b,
     .calendar-selection strong,
-    .category-children span
+    .category-children span,
+    .category-children button
 ) {
     color: var(--card-ink);
     -webkit-text-fill-color: currentColor;
