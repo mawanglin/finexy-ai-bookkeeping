@@ -663,6 +663,7 @@ export interface TransactionEditOptions extends SetTransactionOptions {
     autoRecognizeText?: string;
     autoSaveAfterRecognition?: boolean;
     noTransactionDraft?: boolean;
+    startInEditMode?: boolean;
     recoverPendingTransaction?: boolean;
     recoverTransactionDraft?: boolean;
     expectedRecoveryClientSessionId?: string;
@@ -1111,6 +1112,9 @@ function open(options: TransactionEditOptions): Promise<TransactionEditResponse 
             setTransactionModel(transaction, options, true);
             initTransaction.value = Transaction.of(transaction);
             originalTransactionEditable.value = transaction.editable;
+            if (options.startInEditMode && transaction.editable && transaction.type !== TransactionType.ModifyBalance) {
+                mode.value = TransactionEditPageMode.Edit;
+            }
         } else if (props.type === TransactionEditPageType.Template && options && options.id && responses[3] && responses[3] instanceof TransactionTemplate) {
             const template: TransactionTemplate = responses[3];
             setTransactionModel(template, options, false);

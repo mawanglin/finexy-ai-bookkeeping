@@ -5104,7 +5104,7 @@ function editDetail() {
         const transaction = detail.value.raw;
         detail.value = null;
         void nextTick().then(() => transactionEditDialog.value
-            ?.open({ id: transaction.id, currentTransaction: transaction })
+            ?.open({ id: transaction.id, currentTransaction: transaction, startInEditMode: true })
             .then(() => {
                 return loadPageData(true, false);
             })
