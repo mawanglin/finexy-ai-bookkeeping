@@ -36,4 +36,5 @@ var (
 	ErrAccountAlreadyInLedger                         = NewNormalError(NormalSubcategoryAccount, 30, http.StatusBadRequest, "account already belongs to target ledger")
 	ErrAccountLedgerMigrationBlocked                  = NewNormalError(NormalSubcategoryAccount, 31, http.StatusBadRequest, "account has cross-account or ledger-bound references and cannot be moved")
 	ErrAccountLedgerMigrationAcrossDataStore          = NewNormalError(NormalSubcategoryAccount, 32, http.StatusBadRequest, "moving an account across data stores is not supported")
+	ErrAccountCardConflict                            = NewNormalError(NormalSubcategoryAccount, 33, http.StatusConflict, "account card changed on another device")
 )

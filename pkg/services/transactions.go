@@ -540,8 +540,17 @@ func (s *TransactionService) GetLedgerTransactionsInMonth(c core.Context, uid, l
 
 // GetTransactionByTransactionId returns a transaction model according to transaction id
 func (s *TransactionService) GetTransactionByTransactionId(c core.Context, uid int64, transactionId int64) (*models.Transaction, error) {
+	return s.GetTransactionByTransactionIdInLedger(c, uid, models.DefaultLedgerId, transactionId)
+}
+
+// GetTransactionByTransactionIdInLedger returns one active transaction from
+// the specified ledger in the supplied data-owner shard.
+func (s *TransactionService) GetTransactionByTransactionIdInLedger(c core.Context, uid, ledgerId, transactionId int64) (*models.Transaction, error) {
 	if uid <= 0 {
 		return nil, errs.ErrUserIdInvalid
+	}
+	if ledgerId < models.DefaultLedgerId {
+		return nil, errs.ErrLedgerNotFound
 	}
 
 	if transactionId <= 0 {
@@ -549,7 +558,7 @@ func (s *TransactionService) GetTransactionByTransactionId(c core.Context, uid i
 	}
 
 	transaction := &models.Transaction{}
-	has, err := s.UserDataDB(uid).NewSession(c).ID(transactionId).Where("uid=? AND ledger_id=? AND deleted=?", uid, models.DefaultLedgerId, false).Get(transaction)
+	has, err := s.UserDataDB(uid).NewSession(c).ID(transactionId).Where("uid=? AND ledger_id=? AND deleted=?", uid, ledgerId, false).Get(transaction)
 
 	if err != nil {
 		return nil, err
@@ -968,6 +977,27 @@ func (s *TransactionService) CreateScheduledTransactions(c core.Context, current
 
 // ModifyTransaction saves an existed transaction to database
 func (s *TransactionService) ModifyTransaction(c core.Context, transaction *models.Transaction, changeToTransfer bool, currentTagIdsCount int, addTagIds []int64, removeTagIds []int64, addPictureIds []int64, removePictureIds []int64) error {
+	return s.ModifyTransactionInLedger(c, transactionWriteActor(c, transaction.Uid), transaction.LedgerId,
+		transaction, changeToTransfer, currentTagIdsCount, addTagIds, removeTagIds, addPictureIds, removePictureIds)
+}
+
+// ModifyTransactionInLedger binds the authenticated actor and requested ledger
+// before rechecking both against the live row inside the financial transaction.
+func (s *TransactionService) ModifyTransactionInLedger(c core.Context, actor, ledgerId int64, transaction *models.Transaction, changeToTransfer bool, currentTagIdsCount int, addTagIds []int64, removeTagIds []int64, addPictureIds []int64, removePictureIds []int64, metadata ...TransactionMetadataSnapshot) error {
+	scope, err := resolveTransactionWriteScope(c, actor, transaction.Uid, ledgerId)
+	if err != nil {
+		return err
+	}
+	if len(metadata) > 1 {
+		return errs.ErrParameterInvalid
+	}
+	if len(metadata) == 1 {
+		scope.metadata = &metadata[0]
+	}
+	return s.modifyTransaction(c, transaction, changeToTransfer, currentTagIdsCount, addTagIds, removeTagIds, addPictureIds, removePictureIds, scope)
+}
+
+func (s *TransactionService) modifyTransaction(c core.Context, transaction *models.Transaction, changeToTransfer bool, currentTagIdsCount int, addTagIds []int64, removeTagIds []int64, addPictureIds []int64, removePictureIds []int64, scope *transactionWriteScope) error {
 	if transaction.Uid <= 0 {
 		return errs.ErrUserIdInvalid
 	}
@@ -1032,6 +1062,18 @@ func (s *TransactionService) ModifyTransaction(c core.Context, transaction *mode
 			return err
 		} else if !has {
 			return errs.ErrTransactionNotFound
+		}
+		if err := scope.authorize(sess, oldTransaction); err != nil {
+			return err
+		}
+		if transaction.Uid != oldTransaction.Uid || transaction.LedgerId != oldTransaction.LedgerId {
+			return errs.ErrTransactionNotFound
+		}
+		if err := authorizeTransactionAccounts(sess, transaction); err != nil {
+			return err
+		}
+		if err := scope.authorizeMetadataChanges(sess, oldTransaction, addTagIds, removeTagIds, addPictureIds, removePictureIds); err != nil {
+			return err
 		}
 		if oldTransaction.SavingsGoalFundId > 0 {
 			return errs.ErrTransactionTypeInvalid
@@ -2027,6 +2069,20 @@ func (s *TransactionService) MoveAllTransactionsBetweenAccounts(c core.Context, 
 
 // DeleteTransaction deletes an existed transaction from database
 func (s *TransactionService) DeleteTransaction(c core.Context, uid int64, transactionId int64) error {
+	return s.DeleteTransactionInLedger(c, transactionWriteActor(c, uid), uid, models.DefaultLedgerId, transactionId)
+}
+
+// DeleteTransactionInLedger verifies the actor, requested ledger and live row
+// in the same transaction that deletes associations and reverses balances.
+func (s *TransactionService) DeleteTransactionInLedger(c core.Context, actor, ownerUid, ledgerId, transactionId int64) error {
+	scope, err := resolveTransactionWriteScope(c, actor, ownerUid, ledgerId)
+	if err != nil {
+		return err
+	}
+	return s.deleteTransaction(c, ownerUid, transactionId, scope)
+}
+
+func (s *TransactionService) deleteTransaction(c core.Context, uid int64, transactionId int64, scope *transactionWriteScope) error {
 	if uid <= 0 {
 		return errs.ErrUserIdInvalid
 	}
@@ -2057,6 +2113,9 @@ func (s *TransactionService) DeleteTransaction(c core.Context, uid int64, transa
 			return err
 		} else if !has {
 			return errs.ErrTransactionNotFound
+		}
+		if err := scope.authorize(sess, oldTransaction); err != nil {
+			return err
 		}
 		if oldTransaction.SavingsGoalFundId > 0 {
 			return errs.ErrTransactionTypeInvalid
@@ -2217,6 +2276,18 @@ func (s *TransactionService) DeleteAllTransactions(c core.Context, uid int64, de
 	}
 
 	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
+		if _, err := sess.Where("uid=?", uid).Delete(new(models.AgentImportBatch)); err != nil {
+			return err
+		}
+		if _, err := sess.Where("uid=?", uid).Delete(new(models.AgentImportFingerprint)); err != nil {
+			return err
+		}
+		if deleteAccount {
+			if _, err := sess.Where("uid=?", uid).Delete(new(models.AccountCardAppearance)); err != nil {
+				return err
+			}
+		}
+
 		// Update all transactions to deleted
 		_, err := sess.Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=?", uid, false).Update(updateModel)
 

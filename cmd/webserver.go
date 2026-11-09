@@ -413,6 +413,12 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.POST("/accounts/hide.json", bindApi(api.Accounts.AccountHideHandler, config))
 			apiV1Route.POST("/accounts/move.json", bindApi(api.Accounts.AccountMoveHandler, config))
 			apiV1Route.POST("/accounts/move_ledger.json", bindApi(api.Accounts.AccountMoveLedgerHandler, config))
+			apiV1Route.GET("/accounts/card/get.json", bindApi(api.AccountCards.GetHandler, config))
+			apiV1Route.POST("/accounts/card/update.json", bindApi(api.AccountCards.UpdateHandler, config))
+			// Reports use runtime export checks, including after preview generation.
+			apiV1Route.POST("/reports/query.json", bindApi(api.LedgerReports.QueryHandler, config))
+			apiV1Route.POST("/reports/export/preview.json", bindApi(api.LedgerReports.ExportPreviewHandler, config))
+			apiV1Route.POST("/reports/export.csv", bindCsv(api.LedgerReports.ExportCSVHandler, config))
 			apiV1Route.POST("/accounts/delete.json", bindApi(api.Accounts.AccountDeleteHandler, config))
 			apiV1Route.POST("/accounts/sub_account/delete.json", bindApi(api.Accounts.SubAccountDeleteHandler, config))
 
@@ -489,6 +495,8 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.GET("/transaction/templates/list.json", bindApi(api.TransactionTemplates.TemplateListHandler, config))
 			apiV1Route.GET("/transaction/templates/get.json", bindApi(api.TransactionTemplates.TemplateGetHandler, config))
 			apiV1Route.POST("/transaction/templates/add.json", bindApi(api.TransactionTemplates.TemplateCreateHandler, config))
+			apiV1Route.GET("/transaction/templates/capabilities.json", bindApi(api.TransactionTemplates.TemplateCapabilitiesHandler, config))
+			apiV1Route.POST("/transaction/templates/add_durable.json", bindApi(api.TransactionTemplates.TemplateDurableCreateHandler, config))
 			apiV1Route.POST("/transaction/templates/modify.json", bindApi(api.TransactionTemplates.TemplateModifyHandler, config))
 			apiV1Route.POST("/transaction/templates/hide.json", bindApi(api.TransactionTemplates.TemplateHideHandler, config))
 			apiV1Route.POST("/transaction/templates/move.json", bindApi(api.TransactionTemplates.TemplateMoveHandler, config))
@@ -562,23 +570,27 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.POST("/schedule/review/restore.json", bindApi(api.ScheduledOccurrences.RestoreHandler, config))
 			// AI review queue
 			apiV1Route.GET("/ai/review/list.json", bindApi(api.AIReviewItems.ListHandler, config))
+			apiV1Route.GET("/ai/review/capabilities.json", bindApi(api.AIReviewItems.CapabilitiesHandler, config))
+			apiV1Route.GET("/ai/review/get.json", bindApi(api.AIReviewItems.GetHandler, config))
 			apiV1Route.POST("/ai/review/create.json", bindApi(api.AIReviewItems.CreateHandler, config))
 			apiV1Route.POST("/ai/review/resolve.json", bindApi(api.AIReviewItems.ResolveHandler, config))
 			apiV1Route.POST("/ai/review/dismiss.json", bindApi(api.AIReviewItems.DismissHandler, config))
+			apiV1Route.POST("/ai/review/confirm.json", bindApi(api.AIReviewItems.ConfirmHandler, config))
+			apiV1Route.POST("/ai/review/restore.json", bindApi(api.AIReviewItems.RestoreHandler, config))
 			apiV1Route.POST("/ai/review/delete.json", bindApi(api.AIReviewItems.DeleteHandler, config))
 			apiV1Route.GET("/ai/reports/list.json", bindApi(api.AIReports.ListHandler, config))
 			apiV1Route.POST("/ai/reports/generate.json", bindApi(api.AIReports.GenerateHandler, config))
 
 			// Large Language Models
+			apiV1Route.GET("/llm/usage/get.json", bindApi(api.AIConfigurations.UsageGetHandler, config))
+			apiV1Route.GET("/llm/balance/get.json", bindApi(api.AIConfigurations.BalanceGetHandler, config))
 			apiV1Route.GET("/llm/configuration/get.json", bindApi(api.AIConfigurations.GetHandler, config))
 			apiV1Route.POST("/llm/configuration/update.json", bindApi(api.AIConfigurations.UpdateHandler, config))
 			apiV1Route.POST("/llm/transactions/recognize_text.json", bindApi(api.LargeLanguageModels.RecognizeTransactionTextHandler, config))
 
-			if config.ReceiptImageRecognitionLLMConfig != nil && config.ReceiptImageRecognitionLLMConfig.LLMProvider != "" {
-				if config.TransactionFromAIImageRecognition {
-					apiV1Route.POST("/llm/transactions/recognize_receipt_image.json", bindApi(api.LargeLanguageModels.RecognizeReceiptImageHandler, config))
-				}
-			}
+			// The web AI configuration can enable or disable images without a restart.
+			// Authorization and the current feature/model configuration are checked by the handler.
+			apiV1Route.POST("/llm/transactions/recognize_receipt_image.json", bindApi(api.LargeLanguageModels.RecognizeReceiptImageHandler, config))
 
 			apiV1Route.POST("/ocr/recognize.json", bindApi(api.LocalOCR.RecognizeHandler, config))
 

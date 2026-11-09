@@ -85,6 +85,7 @@ func InitializeMCPHandlers(config *settings.Config) error {
 	}
 
 	registerManagementTools(container)
+	registerMCPTextContentToolHandler(container, MCPRecognizeReceiptImageToolHandler)
 
 	Container = container
 	return nil
@@ -157,7 +158,7 @@ func handleTool[T MCPTextContent | MCPImageContent | MCPAudioContent | MCPResour
 func createNewMCPToolInfo[T MCPTextContent | MCPImageContent | MCPAudioContent | MCPResourceLink | MCPEmbeddedResource](name string, handler MCPToolHandler[T]) *MCPTool {
 	mcpTool := &MCPTool{
 		ToolType:    handler.ToolType(),
-		Annotations: map[string]bool{"readOnlyHint": AgentToolScope(name) == core.AgentScopeRead, "destructiveHint": AgentToolScope(name) != core.AgentScopeRead},
+		Annotations: map[string]bool{"readOnlyHint": AgentToolScope(name) == core.AgentScopeRead, "destructiveHint": AgentToolScope(name) != core.AgentScopeRead, "openWorldHint": name == "recognize_receipt_image"},
 		Name:        name,
 		Description: handler.Description(),
 	}

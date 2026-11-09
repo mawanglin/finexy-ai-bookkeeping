@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/invopop/jsonschema"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/errs"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/llm/data"
@@ -16,6 +15,7 @@ import (
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/llm/provider/common"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/log"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/settings"
+	"github.com/invopop/jsonschema"
 )
 
 // OpenAIResponsesAPIProvider defines the structure of OpenAI responses API provider
@@ -246,7 +246,7 @@ func (p *CommonOpenAIResponsesAPILargeLanguageModelAdapter) buildJsonRequestBody
 		return nil, errs.ErrOperationFailed
 	}
 
-	log.Debugf(c, "[openai_common_responses_api_large_language_model_adapter.buildJsonRequestBody] request body is %s", requestBodyBytes)
+	log.Debugf(c, "[openai_common_responses_api_large_language_model_adapter.buildJsonRequestBody] request prepared")
 	return requestBodyBytes, nil
 }
 

@@ -27,11 +27,12 @@ const (
 	MCP_TOOL_TYPE_UPDATE_CATEGORY          MCPToolType = 50
 	MCP_TOOL_TYPE_SET_CATEGORY_HIDDEN      MCPToolType = 51
 	MCP_TOOL_TYPE_DELETE_CATEGORY          MCPToolType = 52
+	MCP_TOOL_TYPE_RECOGNIZE_RECEIPT_IMAGE  MCPToolType = 53
 
 	MCP_TOOL_MAX_TYPE_VALUE = MCP_TOOL_TYPE_DELETE_TRANSACTION
 
 	mcpFinexyToolMinType = MCP_TOOL_TYPE_QUERY_IMPORT_CONTEXT
-	mcpFinexyToolMaxType = MCP_TOOL_TYPE_DELETE_CATEGORY
+	mcpFinexyToolMaxType = MCP_TOOL_TYPE_RECOGNIZE_RECEIPT_IMAGE
 
 	// MCPAllTools is the mask of all currently supported tools
 	MCPAllTools int64 = (1<<MCP_TOOL_MAX_TYPE_VALUE - 1) | (1<<mcpFinexyToolMaxType-1)&^(1<<(mcpFinexyToolMinType-1)-1)

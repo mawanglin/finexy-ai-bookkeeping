@@ -64,6 +64,10 @@ type LedgerInvitation struct {
 	ExpiredUnixTime int64
 	UsedUnixTime    int64
 	UsedByUid       int64
+	// LegacyFamilyId is set only on invitations migrated from the former
+	// family-wide contract. Accepting one of those tokens grants the same role
+	// on every ledger that belonged to that family, preserving old semantics.
+	LegacyFamilyId int64 `xorm:"INDEX NOT NULL DEFAULT 0"`
 }
 
 func (i *LedgerInvitation) Validate() error {
@@ -156,16 +160,20 @@ type LedgerDeletePreviewRequest struct {
 }
 
 type LedgerDeletePreviewResponse struct {
-	LedgerId               int64    `json:"ledgerId,string"`
-	LedgerName             string   `json:"ledgerName"`
-	ActiveMemberCount      int64    `json:"activeMemberCount"`
-	PendingInvitationCount int64    `json:"pendingInvitationCount"`
-	AccountCount           int64    `json:"accountCount"`
-	TransactionCount       int64    `json:"transactionCount"`
-	SavingsGoalCount       int64    `json:"savingsGoalCount"`
-	SavingsGoalFundCount   int64    `json:"savingsGoalFundCount"`
-	CanDelete              bool     `json:"canDelete"`
-	BlockingReasons        []string `json:"blockingReasons"`
+	LedgerId                 int64    `json:"ledgerId,string"`
+	LedgerName               string   `json:"ledgerName"`
+	ActiveMemberCount        int64    `json:"activeMemberCount"`
+	PendingInvitationCount   int64    `json:"pendingInvitationCount"`
+	AccountCount             int64    `json:"accountCount"`
+	TransactionCount         int64    `json:"transactionCount"`
+	SavingsGoalCount         int64    `json:"savingsGoalCount"`
+	SavingsGoalFundCount     int64    `json:"savingsGoalFundCount"`
+	MonthlyBudgetCount       int64    `json:"monthlyBudgetCount"`
+	TransactionTemplateCount int64    `json:"transactionTemplateCount"`
+	ScheduledOccurrenceCount int64    `json:"scheduledOccurrenceCount"`
+	AIReviewItemCount        int64    `json:"aiReviewItemCount"`
+	CanDelete                bool     `json:"canDelete"`
+	BlockingReasons          []string `json:"blockingReasons"`
 }
 
 // LedgerListRequest represents the parameters for listing visible ledgers.

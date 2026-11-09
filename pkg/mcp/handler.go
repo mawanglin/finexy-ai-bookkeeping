@@ -11,6 +11,7 @@ import (
 
 // MCPAvailableServices holds the services available for MCP tools
 type MCPAvailableServices interface {
+	GetAIRecognitionService() *services.AIRecognitionService
 	GetTransactionService() *services.TransactionService
 	GetTransactionCategoryService() *services.TransactionCategoryService
 	GetTransactionTagService() *services.TransactionTagService

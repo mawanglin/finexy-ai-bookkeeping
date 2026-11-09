@@ -277,3 +277,8 @@ func (a *ModelContextProtocolAPI) GetUserService() *services.UserService {
 func (a *ModelContextProtocolAPI) getMCPVersion(c *core.WebContext) string {
 	return c.GetHeader(mcp.MCPProtocolVersionHeaderName)
 }
+
+// GetAIRecognitionService implements the MCPAvailableServices interface.
+func (a *ModelContextProtocolAPI) GetAIRecognitionService() *services.AIRecognitionService {
+	return services.AIRecognition
+}
