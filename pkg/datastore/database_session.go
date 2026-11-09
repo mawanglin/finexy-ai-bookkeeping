@@ -74,6 +74,21 @@ type DatabaseSession interface {
 	// Join joins another table to the query
 	Join(joinOperator string, tableName any, condition any, args ...any) DatabaseSession
 
+	// Distinct selects distinct values of the specified columns
+	Distinct(columns ...string) DatabaseSession
+
+	// Asc sets ascending ordering for the specified columns
+	Asc(columns ...string) DatabaseSession
+
+	// Desc sets descending ordering for the specified columns
+	Desc(columns ...string) DatabaseSession
+
+	// QuoteIdentifier quotes an identifier for the current database dialect
+	QuoteIdentifier(name string) string
+
+	// TableName returns the mapped table name of the specified model
+	TableName(bean any) string
+
 	// Close releases the session and its underlying connection
 	Close() error
 }
@@ -205,4 +220,32 @@ func (s *XOrmSession) In(column string, args ...any) DatabaseSession {
 func (s *XOrmSession) NotIn(column string, args ...any) DatabaseSession {
 	s.Session.NotIn(column, args...)
 	return s
+}
+
+// Distinct selects distinct values of the specified columns
+func (s *XOrmSession) Distinct(columns ...string) DatabaseSession {
+	s.Session.Distinct(columns...)
+	return s
+}
+
+// Asc sets ascending ordering for the specified columns
+func (s *XOrmSession) Asc(columns ...string) DatabaseSession {
+	s.Session.Asc(columns...)
+	return s
+}
+
+// Desc sets descending ordering for the specified columns
+func (s *XOrmSession) Desc(columns ...string) DatabaseSession {
+	s.Session.Desc(columns...)
+	return s
+}
+
+// QuoteIdentifier quotes an identifier for the current database dialect
+func (s *XOrmSession) QuoteIdentifier(name string) string {
+	return s.Session.Engine().Quote(name)
+}
+
+// TableName returns the mapped table name of the specified model
+func (s *XOrmSession) TableName(bean any) string {
+	return s.Session.Engine().TableName(bean)
 }

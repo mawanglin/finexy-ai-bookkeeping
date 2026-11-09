@@ -1,5 +1,5 @@
 <template>
-    <v-dialog width="600" :persistent="loading || (mode === 'replaceInvalidItems' && !!sourceItem) || !!targetItem" v-model="showState">
+    <v-dialog class="finexy-dialog finexy-subdialog finexy-dialog--import" width="600" :persistent="loading || (mode === 'replaceInvalidItems' && !!sourceItem) || !!targetItem" v-model="showState">
         <one-column-dialog-layout :title="title" :cancel-button-title="tt('Cancel')"
                                   :disabled="loading"
                                   @cancel="cancel">

@@ -10,6 +10,7 @@ import { useTransactionTemplatesStore } from './transactionTemplate.ts';
 import { useTransactionsStore } from './transaction.ts';
 import { useOverviewStore } from './overview.ts';
 import { useStatisticsStore } from './statistics.ts';
+import { useLedgerReportStore } from './ledgerReport.ts';
 import { useExplorersStore } from './explorer.ts';
 import { useUserCustomIconsStore } from './userCustomIcon.ts';
 import { useImportPresetsStore } from './importPreset.ts';
@@ -18,6 +19,8 @@ import { useProductAssetsStore } from './productAsset.ts';
 import { useMonthlyBudgetStore } from './monthlyBudget.ts';
 import { useAIReviewItemsStore } from './aiReviewItem.ts';
 import { useAIReportsStore } from './aiReport.ts';
+import { useLedgersStore } from './ledger.ts';
+import { useSavingsGoalsStore } from './savingsGoal.ts';
 
 import type { AuthResponse, RegisterResponse } from '@/models/auth_response.ts';
 import type {
@@ -78,6 +81,7 @@ export const useRootStore = defineStore('root', () => {
         userCustomIconsStore.resetCustomIcons();
         explorersStore.resetTransactionExplorers();
         statisticsStore.resetTransactionStatistics();
+        useLedgerReportStore().reset();
         overviewStore.resetTransactionOverview();
         transactionsStore.resetTransactions();
         transactionTagsStore.resetTransactionTags();
@@ -88,8 +92,11 @@ export const useRootStore = defineStore('root', () => {
         monthlyBudgetStore.reset();
         aiReviewItemsStore.reset();
         aiReportsStore.reset();
+        useSavingsGoalsStore().reset();
 
         if (resetUserInfoAndSettings) {
+            useLedgersStore().reset();
+            transactionsStore.initTransactionDraft();
             userStore.resetUserBasicInfo();
         }
     }

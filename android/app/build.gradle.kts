@@ -5,6 +5,8 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val isolatedQa = providers.gradleProperty("finexyIsolatedQa").orNull == "true"
+
 android {
     namespace = "com.finexy.mobile"
     compileSdk = 35
@@ -13,16 +15,37 @@ android {
         applicationId = "com.finexy.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 10902
+        versionName = "1.0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["finexyAppLabel"] = "Finexy"
     }
 
     buildTypes {
+        create("qa") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".qa"
+            versionNameSuffix = "-qa"
+            manifestPlaceholders["finexyAppLabel"] = "Finexy QA"
+            matchingFallbacks += "debug"
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+    }
+
+    // A separate app UID protects the user's Room, Keystore and WorkManager data.
+    // The property selects the instrumentation target without changing debug/release.
+    testBuildType = if (isolatedQa) "qa" else "debug"
+    sourceSets.getByName("qa") {
+        java.srcDir("src/debug/java")
+        manifest.srcFile("src/qa/AndroidManifest.xml")
+    }
+    if (isolatedQa) {
+        sourceSets.getByName("androidTest").java.srcDir("src/qaAndroidTest/java")
+        // Separate-UID provider/receiver probes belong only to the QA test APK.
+        sourceSets.getByName("androidTest").manifest.srcFile("src/qaAndroidTest/AndroidManifest.xml")
     }
 
     buildFeatures { compose = true; buildConfig = true }
@@ -33,6 +56,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 }
+
+configurations.getByName("qaImplementation").extendsFrom(configurations.getByName("debugImplementation"))
 
 kotlin {
     compilerOptions {
@@ -55,13 +80,18 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("net.lingala.zip4j:zip4j:2.11.5")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // --no-restart instrumentation attaches after the QA target's coroutine classloader exists.
+    // Keep the standard exception collector visible from startup; debug/release stay unchanged.
+    add("qaImplementation", "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     ksp("androidx.room:room-compiler:2.6.1")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")

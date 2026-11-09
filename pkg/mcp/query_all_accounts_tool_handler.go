@@ -55,7 +55,7 @@ func (h *mcpQueryAllAccountsToolHandler) OutputType() reflect.Type {
 // Handle processes the MCP call tool request and returns the response
 func (h *mcpQueryAllAccountsToolHandler) Handle(c *core.WebContext, callToolReq *MCPCallToolRequest, user *models.User, currentConfig *settings.Config, services MCPAvailableServices) (any, []*MCPTextContent, error) {
 	uid := user.Uid
-	accounts, err := services.GetAccountService().GetAllAccountsByUid(c, uid)
+	accounts, err := services.GetAccountService().GetAccountsInLedger(c, uid, c.GetTokenClaims().AgentLedgerId)
 
 	if err != nil {
 		log.Errorf(c, "[query_all_accounts_tool_handler.Handle] failed to get all accounts for user \"uid:%d\", because %s", uid, err.Error())

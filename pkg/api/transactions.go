@@ -253,6 +253,10 @@ func (a *TransactionsApi) transactionListInLedger(c *core.WebContext, uid int64,
 	if err != nil {
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
+	user, clientTimezone, canWrite, editErr := a.ledgerTransactionEditContext(c, uid, request.LedgerId)
+	if editErr != nil {
+		return nil, editErr
+	}
 	accounts, err := a.accounts.GetAccountsInLedger(c, uid, request.LedgerId)
 	if err != nil {
 		return nil, errs.Or(err, errs.ErrOperationFailed)
@@ -316,7 +320,7 @@ func (a *TransactionsApi) transactionListInLedger(c *core.WebContext, uid int64,
 		if account == nil {
 			return nil, errs.ErrAccountNotFound
 		}
-		item := row.ToTransactionInfoResponse(nil, postingUid == uid || row.RecorderUid == uid)
+		item := row.ToTransactionInfoResponse(nil, a.transactionEditableInLedger(row, user, clientTimezone, accountMap, uid, postingUid, request.LedgerId, canWrite))
 		if category := categoryMap[row.CategoryId]; category != nil {
 			item.Category = category.ToTransactionCategoryInfoResponse()
 		}
@@ -344,6 +348,10 @@ func (a *TransactionsApi) transactionMonthListInLedger(c *core.WebContext, uid i
 	postingUid, err := services.Ledgers.LedgerDataOwnerUid(c, uid, ledger)
 	if err != nil {
 		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+	user, clientTimezone, canWrite, editErr := a.ledgerTransactionEditContext(c, uid, request.LedgerId)
+	if editErr != nil {
+		return nil, editErr
 	}
 	accounts, err := a.accounts.GetAccountsInLedger(c, uid, request.LedgerId)
 	if err != nil {
@@ -404,7 +412,7 @@ func (a *TransactionsApi) transactionMonthListInLedger(c *core.WebContext, uid i
 		if account == nil {
 			return nil, errs.ErrAccountNotFound
 		}
-		item := row.ToTransactionInfoResponse(nil, postingUid == uid || row.RecorderUid == uid)
+		item := row.ToTransactionInfoResponse(nil, a.transactionEditableInLedger(row, user, clientTimezone, accountMap, uid, postingUid, request.LedgerId, canWrite))
 		if category := categoryMap[row.CategoryId]; category != nil {
 			item.Category = category.ToTransactionCategoryInfoResponse()
 		}
@@ -1350,7 +1358,7 @@ func (a *TransactionsApi) TransactionGetHandler(c *core.WebContext) (any, *errs.
 		return nil, errs.ErrUserNotFound
 	}
 
-	transaction, err := a.transactions.GetTransactionByTransactionId(c, postingUid, transactionGetReq.Id)
+	transaction, err := a.transactions.GetTransactionByTransactionIdInLedger(c, postingUid, transactionGetReq.LedgerId, transactionGetReq.Id)
 
 	if err != nil {
 		log.Errorf(c, "[transactions.TransactionGetHandler] failed to get transaction \"id:%d\" for user \"uid:%d\", because %s", transactionGetReq.Id, uid, err.Error())
@@ -1425,6 +1433,13 @@ func (a *TransactionsApi) TransactionGetHandler(c *core.WebContext) (any, *errs.
 	}
 
 	transactionEditable := transaction.IsEditable(user, clientTimezone, accountMap[transaction.AccountId], accountMap[transaction.RelatedAccountId])
+	if transactionGetReq.LedgerId > 0 {
+		canWrite, editErr := a.ledgerTransactionCanWrite(c, uid, transactionGetReq.LedgerId)
+		if editErr != nil {
+			return nil, editErr
+		}
+		transactionEditable = a.transactionEditableInLedger(transaction, user, clientTimezone, accountMap, uid, postingUid, transactionGetReq.LedgerId, canWrite)
+	}
 	transactionTagIds := allTransactionTagIds[transaction.TransactionId]
 	transactionResp := transaction.ToTransactionInfoResponse(transactionTagIds, transactionEditable)
 
@@ -1567,6 +1582,10 @@ func (a *TransactionsApi) TransactionCreateHandler(c *core.WebContext) (any, *er
 	transaction.LedgerId = transactionCreateReq.LedgerId
 	transaction.RecorderUid = uid
 	transaction.PayerUid = uid
+	replayed, err := a.transactions.ReplayTransactionSubmission(c, transaction, tagIds, pictureIds, transactionCreateReq.ClientSessionId)
+	if err != nil {
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
 
 	allUsedAccounts, err := a.getTransactionUsedAccounts(c, postingUid, []*models.Transaction{transaction})
 
@@ -1584,13 +1603,13 @@ func (a *TransactionsApi) TransactionCreateHandler(c *core.WebContext) (any, *er
 
 	transactionEditable := user.CanEditTransactionByTransactionTime(transaction.TransactionTime, clientTimezone, allUsedAccounts[transaction.AccountId], allUsedAccounts[transaction.RelatedAccountId])
 
-	if !transactionEditable {
+	if !transactionEditable && !replayed {
 		return nil, errs.ErrCannotCreateTransactionWithThisTransactionTime
 	}
 
 	var pictureInfos []*models.TransactionPictureInfo
 
-	if len(pictureIds) > 0 {
+	if !replayed && len(pictureIds) > 0 {
 		pictureInfos, err = a.transactionPictures.GetNewPictureInfosByPictureIds(c, postingUid, pictureIds)
 
 		if err != nil {
@@ -1606,49 +1625,30 @@ func (a *TransactionsApi) TransactionCreateHandler(c *core.WebContext) (any, *er
 		}
 	}
 
-	if a.CurrentConfig().EnableDuplicateSubmissionsCheck && transactionCreateReq.ClientSessionId != "" {
-		found, remark := a.GetSubmissionRemark(duplicatechecker.DUPLICATE_CHECKER_TYPE_NEW_TRANSACTION, uid, transactionCreateReq.ClientSessionId)
-
-		if found {
-			log.Infof(c, "[transactions.TransactionCreateHandler] another transaction \"id:%s\" has been created for user \"uid:%d\"", remark, uid)
-			transactionId, err := utils.StringToInt64(remark)
-
-			if err == nil {
-				transaction, err = a.transactions.GetTransactionByTransactionId(c, postingUid, transactionId)
-
-				if err != nil {
-					log.Errorf(c, "[transactions.TransactionCreateHandler] failed to get existed transaction \"id:%d\" for user \"uid:%d\", because %s", transactionId, uid, err.Error())
-					return nil, errs.Or(err, errs.ErrOperationFailed)
-				}
-
-				transactionResp := transaction.ToTransactionInfoResponse(tagIds, transactionEditable)
-
-				if len(pictureInfos) > 0 {
-					pictureToken, err := a.GetTransactionPictureToken(c, uid)
-
-					if err != nil {
-						log.Errorf(c, "[transactions.TransactionCreateHandler] failed to get transaction picture token for user \"uid:%d\", because %s", uid, err.Error())
-						return nil, errs.Or(err, errs.ErrTokenGenerating)
-					}
-
-					transactionResp.Pictures = a.GetTransactionPictureInfoResponseList(pictureInfos, pictureToken)
-				}
-
-				return transactionResp, nil
+	if !replayed {
+		err = a.transactions.CreateTransactionIdempotent(c, transaction, tagIds, pictureIds, transactionCreateReq.ClientSessionId)
+		if err != nil {
+			log.Errorf(c, "[transactions.TransactionCreateHandler] failed to create transaction \"id:%d\" for user \"uid:%d\", because %s", transaction.TransactionId, uid, err.Error())
+			return nil, errs.Or(err, errs.ErrOperationFailed)
+		}
+	}
+	// Return persisted associations, including on a concurrent or early replay.
+	if transactionCreateReq.ClientSessionId != "" {
+		allTags, readErr := a.transactionTags.GetAllTagIdsOfTransactions(c, postingUid, []int64{transaction.TransactionId})
+		if readErr != nil {
+			return nil, errs.Or(readErr, errs.ErrOperationFailed)
+		}
+		tagIds = allTags[transaction.TransactionId]
+		if a.CurrentConfig().EnableTransactionPictures {
+			pictureInfos, err = a.transactionPictures.GetPictureInfosByTransactionId(c, postingUid, transaction.TransactionId)
+			if err != nil {
+				return nil, errs.Or(err, errs.ErrOperationFailed)
 			}
 		}
 	}
 
-	err = a.transactions.CreateTransaction(c, transaction, tagIds, pictureIds)
-
-	if err != nil {
-		log.Errorf(c, "[transactions.TransactionCreateHandler] failed to create transaction \"id:%d\" for user \"uid:%d\", because %s", transaction.TransactionId, uid, err.Error())
-		return nil, errs.Or(err, errs.ErrOperationFailed)
-	}
-
 	log.Infof(c, "[transactions.TransactionCreateHandler] user \"uid:%d\" has created a new transaction \"id:%d\" successfully", uid, transaction.TransactionId)
 
-	a.SetSubmissionRemarkIfEnable(duplicatechecker.DUPLICATE_CHECKER_TYPE_NEW_TRANSACTION, uid, transactionCreateReq.ClientSessionId, utils.Int64ToString(transaction.TransactionId))
 	transactionResp := transaction.ToTransactionInfoResponse(tagIds, transactionEditable)
 
 	if len(pictureInfos) > 0 {
@@ -1726,7 +1726,7 @@ func (a *TransactionsApi) TransactionModifyHandler(c *core.WebContext) (any, *er
 		return nil, errs.ErrUserNotFound
 	}
 
-	transaction, err := a.transactions.GetTransactionByTransactionId(c, postingUid, transactionModifyReq.Id)
+	transaction, err := a.transactions.GetTransactionByTransactionIdInLedger(c, postingUid, transactionModifyReq.LedgerId, transactionModifyReq.Id)
 
 	if err != nil {
 		log.Errorf(c, "[transactions.TransactionModifyHandler] failed to get transaction \"id:%d\" for user \"uid:%d\", because %s", transactionModifyReq.Id, uid, err.Error())
@@ -1784,6 +1784,14 @@ func (a *TransactionsApi) TransactionModifyHandler(c *core.WebContext) (any, *er
 	}
 
 	transactionPictureIds := a.transactionPictures.GetTransactionPictureIds(transactionPictureInfos)
+	if postingUid != uid {
+		if !services.TransactionObjectIdsEqual(tagIds, transactionTagIds) {
+			return nil, errs.ErrTransactionTagNotFound
+		}
+		if !services.TransactionObjectIdsEqual(pictureIds, transactionPictureIds) {
+			return nil, errs.ErrTransactionPictureNotFound
+		}
+	}
 
 	newTransaction := &models.Transaction{
 		TransactionId:     transaction.TransactionId,
@@ -1823,8 +1831,8 @@ func (a *TransactionsApi) TransactionModifyHandler(c *core.WebContext) (any, *er
 		newTransaction.Comment == transaction.Comment &&
 		newTransaction.GeoLongitude == transaction.GeoLongitude &&
 		newTransaction.GeoLatitude == transaction.GeoLatitude &&
-		utils.Int64SliceEquals(tagIds, transactionTagIds) &&
-		utils.Int64SliceEquals(pictureIds, transactionPictureIds) {
+		services.TransactionObjectIdsEqual(tagIds, transactionTagIds) &&
+		services.TransactionObjectIdsEqual(pictureIds, transactionPictureIds) {
 		return nil, errs.ErrNothingWillBeUpdated
 	}
 
@@ -1852,7 +1860,7 @@ func (a *TransactionsApi) TransactionModifyHandler(c *core.WebContext) (any, *er
 	var addTransactionTagIds []int64
 	var removeTransactionTagIds []int64
 
-	if !utils.Int64SliceEquals(tagIds, transactionTagIds) {
+	if !services.TransactionObjectIdsEqual(tagIds, transactionTagIds) {
 		removeTransactionTagIds = transactionTagIds
 		addTransactionTagIds = tagIds
 	}
@@ -1861,7 +1869,7 @@ func (a *TransactionsApi) TransactionModifyHandler(c *core.WebContext) (any, *er
 	removeTransactionPictureIds := utils.Int64SliceMinus(transactionPictureIds, pictureIds)
 	var newPictureInfos []*models.TransactionPictureInfo
 
-	if !utils.Int64SliceEquals(pictureIds, transactionPictureIds) {
+	if !services.TransactionObjectIdsEqual(pictureIds, transactionPictureIds) {
 		oldAndNewPictureIds := transactionPictureIds
 		oldAndNewPictureInfoMap := a.transactionPictures.GetPictureInfoMapByList(transactionPictureInfos)
 
@@ -1896,7 +1904,8 @@ func (a *TransactionsApi) TransactionModifyHandler(c *core.WebContext) (any, *er
 		}
 	}
 
-	err = a.transactions.ModifyTransaction(c, newTransaction, changeToTransfer, len(transactionTagIds), addTransactionTagIds, removeTransactionTagIds, addTransactionPictureIds, removeTransactionPictureIds)
+	err = a.transactions.ModifyTransactionInLedger(c, uid, transactionModifyReq.LedgerId, newTransaction, changeToTransfer, len(transactionTagIds), addTransactionTagIds, removeTransactionTagIds, addTransactionPictureIds, removeTransactionPictureIds,
+		services.TransactionMetadataSnapshot{TagIds: tagIds, PictureIds: pictureIds})
 
 	if err != nil {
 		log.Errorf(c, "[transactions.TransactionModifyHandler] failed to update transaction \"id:%d\" for user \"uid:%d\", because %s", transactionModifyReq.Id, uid, err.Error())
@@ -2752,7 +2761,7 @@ func (a *TransactionsApi) TransactionDeleteHandler(c *core.WebContext) (any, *er
 		return nil, errs.ErrUserNotFound
 	}
 
-	transaction, err := a.transactions.GetTransactionByTransactionId(c, postingUid, transactionDeleteReq.Id)
+	transaction, err := a.transactions.GetTransactionByTransactionIdInLedger(c, postingUid, transactionDeleteReq.LedgerId, transactionDeleteReq.Id)
 
 	if err != nil {
 		log.Errorf(c, "[transactions.TransactionDeleteHandler] failed to get transaction \"id:%d\" for user \"uid:%d\", because %s", transactionDeleteReq.Id, uid, err.Error())
@@ -2780,7 +2789,7 @@ func (a *TransactionsApi) TransactionDeleteHandler(c *core.WebContext) (any, *er
 		return nil, errs.ErrCannotDeleteTransactionWithThisTransactionTime
 	}
 
-	err = a.transactions.DeleteTransaction(c, postingUid, transactionDeleteReq.Id)
+	err = a.transactions.DeleteTransactionInLedger(c, uid, postingUid, transactionDeleteReq.LedgerId, transactionDeleteReq.Id)
 
 	if err != nil {
 		log.Errorf(c, "[transactions.TransactionDeleteHandler] failed to delete transaction \"id:%d\" for user \"uid:%d\", because %s", transactionDeleteReq.Id, uid, err.Error())
@@ -3175,7 +3184,23 @@ func (a *TransactionsApi) TransactionParseImportFileHandler(c *core.WebContext) 
 		return nil, errs.ErrNotPermittedToPerformThisAction
 	}
 
-	accounts, err := a.accounts.GetAllAccountsByUid(c, user.Uid)
+	ledgerID := int64(0)
+
+	if values := form.Value["ledgerId"]; len(values) > 0 {
+		ledgerID, err = utils.StringToInt64(values[0])
+
+		if err != nil || ledgerID < 0 {
+			return nil, errs.ErrParameterInvalid
+		}
+	}
+
+	ledger, err := services.ImportLedger(c, uid, ledgerID)
+
+	if err != nil {
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	accounts, err := a.accounts.GetAccountsInLedger(c, uid, ledgerID)
 
 	if err != nil {
 		log.Errorf(c, "[transactions.TransactionParseImportFileHandler] failed to get accounts for user \"uid:%d\", because %s", user.Uid, err.Error())
@@ -3184,7 +3209,7 @@ func (a *TransactionsApi) TransactionParseImportFileHandler(c *core.WebContext) 
 
 	accountMap := a.accounts.GetVisibleAccountNameMapByList(accounts)
 
-	categories, err := a.transactionCategories.GetAllCategoriesByUid(c, user.Uid, 0, -1)
+	categories, err := a.transactionCategories.GetAllCategoriesByUid(c, ledger.OwnerUid, 0, -1)
 
 	if err != nil {
 		log.Errorf(c, "[transactions.TransactionParseImportFileHandler] failed to get categories for user \"uid:%d\", because %s", user.Uid, err.Error())
@@ -3201,6 +3226,14 @@ func (a *TransactionsApi) TransactionParseImportFileHandler(c *core.WebContext) 
 	}
 
 	tagMap := a.transactionTags.GetVisibleTagNameMapByList(tags)
+	if ledger.OwnerUid != uid {
+		tagMap = nil
+	}
+
+	// Tags are private to their owner, so shared-ledger imports cannot resolve them.
+	if ledger.OwnerUid != uid {
+		tagMap = nil
+	}
 
 	parsedTransactions, _, _, _, _, _, err := dataImporter.ParseImportedData(c, user, fileData, clientTimezone, additionalOptions, accountMap, expenseCategoryMap, incomeCategoryMap, transferCategoryMap, tagMap)
 
@@ -3241,6 +3274,12 @@ func (a *TransactionsApi) TransactionImportHandler(c *core.WebContext) (any, *er
 	}
 
 	uid := c.GetCurrentUid()
+	ledger, err := services.ImportLedger(c, uid, transactionImportReq.LedgerId)
+
+	if err != nil {
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
 
 	if a.CurrentConfig().EnableDuplicateSubmissionsCheck && transactionImportReq.ClientSessionId != "" {
 		found, remark := a.GetSubmissionRemark(duplicatechecker.DUPLICATE_CHECKER_TYPE_IMPORT_TRANSACTIONS, uid, transactionImportReq.ClientSessionId)
@@ -3260,6 +3299,9 @@ func (a *TransactionsApi) TransactionImportHandler(c *core.WebContext) (any, *er
 
 	for i := 0; i < len(transactionImportReq.Transactions); i++ {
 		transactionCreateReq := transactionImportReq.Transactions[i]
+		if transactionCreateReq == nil || (transactionCreateReq.LedgerId != 0 && transactionCreateReq.LedgerId != transactionImportReq.LedgerId) {
+			return nil, errs.ErrParameterInvalid
+		}
 		tagIds, err := utils.StringArrayToInt64Array(transactionCreateReq.TagIds)
 
 		if err != nil {
@@ -3317,11 +3359,16 @@ func (a *TransactionsApi) TransactionImportHandler(c *core.WebContext) (any, *er
 
 	for i := 0; i < len(transactionImportReq.Transactions); i++ {
 		transactionCreateReq := transactionImportReq.Transactions[i]
-		transaction := a.createNewTransactionModel(uid, transactionCreateReq, c.ClientIP())
+		if transactionCreateReq == nil || (transactionCreateReq.LedgerId != 0 && transactionCreateReq.LedgerId != transactionImportReq.LedgerId) {
+			return nil, errs.ErrParameterInvalid
+		}
+
+		transaction := a.createNewTransactionModel(ledger.OwnerUid, transactionCreateReq, c.ClientIP())
+		transaction.LedgerId, transaction.RecorderUid, transaction.PayerUid = ledger.LedgerId, uid, uid
 		newTransactions[i] = transaction
 	}
 
-	allUsedAccounts, err := a.getTransactionUsedAccounts(c, uid, newTransactions)
+	allUsedAccounts, err := a.getTransactionUsedAccounts(c, ledger.OwnerUid, newTransactions)
 
 	if err != nil {
 		log.Errorf(c, "[transactions.TransactionImportHandler] failed to get transaction used accounts for user \"uid:%d\", because %s", uid, err.Error())
@@ -3364,7 +3411,8 @@ func (a *TransactionsApi) TransactionImportHandler(c *core.WebContext) (any, *er
 	}
 
 	for i := 0; i < len(newTransactions); i++ {
-		err = a.transactions.CreateTransaction(c, newTransactions[i], newTransactionTagIdsMap[i], nil)
+		// Each row rechecks live ledger access and account ownership in its own transaction.
+		err = a.transactions.BatchImportTransactions(c, uid, ledger.LedgerId, []*models.Transaction{newTransactions[i]}, map[int][]int64{0: newTransactionTagIdsMap[i]}, nil)
 
 		if err != nil {
 			result.Finished = true

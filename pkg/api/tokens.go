@@ -77,6 +77,14 @@ func (a *TokensApi) TokenListHandler(c *core.WebContext) (any, *errs.Error) {
 			tokenResp.UserAgent = core.TokenUserAgentForMCP
 		}
 
+		if token.TokenType == core.USER_TOKEN_TYPE_API || token.TokenType == core.USER_TOKEN_TYPE_MCP {
+			auth := core.ParseAgentAuthorization(token.Context)
+			tokenResp.Name = auth.Name
+			tokenResp.Scopes = auth.Scopes
+			tokenResp.LedgerId = auth.LedgerId
+		}
+
+		tokenResp.ExpiresAt = token.ExpiredUnixTime
 		tokenResps[i] = tokenResp
 	}
 
@@ -115,7 +123,7 @@ func (a *TokensApi) TokenGenerateAPIHandler(c *core.WebContext) (any, *errs.Erro
 		return nil, errs.ErrUserPasswordWrong
 	}
 
-	token, claims, err := a.tokens.CreateAPIToken(c, user, generateAPITokenReq.ExpiredInSeconds)
+	token, claims, err := a.tokens.CreateAgentToken(c, user, core.USER_TOKEN_TYPE_API, generateAPITokenReq.ExpiredInSeconds, generateAPITokenReq.Name, generateAPITokenReq.Scopes, nil, generateAPITokenReq.LedgerId)
 
 	if err != nil {
 		log.Errorf(c, "[tokens.TokenGenerateAPIHandler] failed to create api token for user \"uid:%d\", because %s", user.Uid, err.Error())
@@ -136,6 +144,16 @@ func (a *TokensApi) TokenGenerateAPIHandler(c *core.WebContext) (any, *errs.Erro
 func (a *TokensApi) TokenGenerateMCPHandler(c *core.WebContext) (any, *errs.Error) {
 	if !a.CurrentConfig().EnableMCPServer {
 		return nil, errs.ErrMCPServerNotEnabled
+	}
+
+	enabled, accessErr := a.users.IsMCPAccessEnabled(c, c.GetCurrentUid())
+
+	if accessErr != nil {
+		return nil, errs.ErrOperationFailed
+	}
+
+	if !enabled {
+		return nil, errs.ErrAgentPermissionDenied
 	}
 
 	var generateMCPTokenReq models.TokenGenerateMCPRequest
@@ -175,7 +193,7 @@ func (a *TokensApi) TokenGenerateMCPHandler(c *core.WebContext) (any, *errs.Erro
 		enabledTools = &mask
 	}
 
-	token, claims, err := a.tokens.CreateMCPToken(c, user, generateMCPTokenReq.ExpiredInSeconds, enabledTools)
+	token, claims, err := a.tokens.CreateAgentToken(c, user, core.USER_TOKEN_TYPE_MCP, generateMCPTokenReq.ExpiredInSeconds, generateMCPTokenReq.Name, generateMCPTokenReq.Scopes, enabledTools, generateMCPTokenReq.LedgerId)
 
 	if err != nil {
 		log.Errorf(c, "[tokens.TokenGenerateMCPHandler] failed to create mcp token for user \"uid:%d\", because %s", user.Uid, err.Error())

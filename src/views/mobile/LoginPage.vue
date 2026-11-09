@@ -20,7 +20,7 @@
                 inputmode="email"
                 clear-button
                 class="margin-top-half"
-                :disabled="loggingInByPassword || loggingInByOAuth2"
+                :disabled="show2faSheet || loggingInByPassword || loggingInByOAuth2 || verifying"
                 :label="tt('Username')"
                 :placeholder="tt('Your username or email')"
                 v-model:value.trim="username"
@@ -36,7 +36,7 @@
                 type="password"
                 autocomplete="current-password"
                 clear-button
-                :disabled="loggingInByPassword || loggingInByOAuth2"
+                :disabled="show2faSheet || loggingInByPassword || loggingInByOAuth2 || verifying"
                 :label="tt('Password')"
                 :placeholder="tt('Your password')"
                 v-model:value="password"
@@ -45,6 +45,11 @@
                 v-if="isInternalAuthEnabled()"
             ></f7-list-input>
 
+            <f7-list-item checkbox class="remember-login-row" title="记住账号和密码" :checked="rememberLogin"
+                          footer="仅在个人设备使用；取消勾选可清除本机保存内容。"
+                          :disabled="show2faSheet || loggingInByPassword || loggingInByOAuth2 || verifying"
+                          @change="rememberLogin = $event.target.checked" v-if="isInternalAuthEnabled()" />
+            <f7-list-item role="alert" :title="rememberLoginError" v-if="isInternalAuthEnabled() && rememberLoginError" />
             <f7-list-item class="login-page-utilities" v-if="isInternalAuthEnabled()">
                 <template #title>
                     <small>
@@ -233,6 +238,8 @@ const {
     version,
     username,
     password,
+    rememberLogin,
+    rememberLoginError,
     passcode,
     backupCode,
     tempToken,
@@ -447,6 +454,30 @@ function switch2FAVerifyType(): void {
 
 oauth2ClientSessionId.value = generateRandomUUID();
 </script>
+
+<style scoped>
+.remember-login-row :deep(label.item-checkbox) {
+    position: relative;
+    min-height: 48px;
+}
+
+.remember-login-row :deep(label.item-checkbox input[type="checkbox"]) {
+    display: block;
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.remember-login-row :deep(label.item-checkbox:has(input:focus-visible)) {
+    outline: 2px solid var(--f7-theme-color);
+    outline-offset: -2px;
+}
+</style>
 
 <style>
 .login-screen .login-screen-title {

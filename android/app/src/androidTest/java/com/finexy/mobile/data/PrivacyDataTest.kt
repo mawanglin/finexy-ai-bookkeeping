@@ -16,6 +16,22 @@ class PrivacyDataTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private val password = "Test-backup-passphrase-123"
 
+    private fun removePeriodicFieldsForLegacyBackup(document: JSONObject) {
+        val tables = document.getJSONObject("tables")
+        tables.remove("template_form_drafts"); tables.remove("template_creation_queue"); tables.remove("ledger_ai_review_cache"); tables.remove("ai_review_drafts"); tables.remove("ai_review_requests"); tables.remove("ai_review_images"); tables.remove("ai_review_image_chunks")
+        listOf("transaction_templates", "scheduled_occurrences").forEach { table ->
+            tables.optJSONArray(table)?.let { rows ->
+                repeat(rows.length()) { index ->
+                    rows.getJSONObject(index).apply {
+                        remove("ledgerId")
+                        remove("pendingAction")
+                        remove("pendingActionQueuedAt")
+                    }
+                }
+            }
+        }
+    }
+
     @Test fun corruptedPinRecordCannotDisableTheLock() {
         val name = "privacy-corrupt-${UUID.randomUUID()}"
         try {
@@ -82,8 +98,6 @@ class PrivacyDataTest {
                 ExchangeRateEntity("CNY", "1", "CNY", "user_custom", "", 1_788_000_000, 1_788_000_000_000),
                 ExchangeRateEntity("USD", "0.13876543", "CNY", "user_custom", "", 1_788_000_000, 1_788_000_000_000)
             ))
-            source.dao().upsertFamilyGroups(listOf(FamilyGroupEntity(7, 100, "温暖小家", "共享账本", 2, 1700000000)))
-            source.dao().upsertFamilyMembers(listOf(FamilyMemberEntity(11, 7, 100, 1, 1, "林悦", 1700000000)))
             source.dao().upsertLedgers(listOf(LedgerEntity(9, 100, 2, 7, "家庭账本", "", 1700000000)))
             source.dao().upsertSavingsGoals(listOf(SavingsGoalEntity(5, 100, 9, "全家旅行基金", 200000, 105000, false, 0, "")))
             source.dao().upsertAccounts(listOf(AccountEntity(10, "美元账户", "USD")))
@@ -92,13 +106,11 @@ class PrivacyDataTest {
             val from = LedgerBackup(source, "scope-a"); val to = LedgerBackup(target, "scope-a")
             val encrypted = from.export(password)
             val preview = to.preview(encrypted, password)
-            assertEquals(14, preview.getInt("schema"))
+            assertEquals(20, preview.getInt("schema"))
             assertEquals(1, to.restore(preview)); assertEquals(row, target.dao().findTransaction(row.localId))
             assertEquals(77L, target.dao().findAIReviewItem(77)!!.id)
             assertEquals("旅行电脑", target.dao().allProductAssets().single().name)
             assertEquals("0.13876543", target.dao().allExchangeRates().first { it.currency == "USD" }.rate)
-            assertEquals("温暖小家", target.dao().observeFamilyGroups().first().first().name)
-            assertEquals("林悦", target.dao().allFamilyMembers().first().nickname)
             assertEquals("家庭账本", target.dao().allLedgers().first().name)
             assertEquals("全家旅行基金", target.dao().allSavingsGoals().first().name)
             assertEquals(10L, target.dao().findAccountMapping(TransactionEntity.LOCAL_ACCOUNT_ID)!!.serverId)
@@ -111,6 +123,32 @@ class PrivacyDataTest {
         } finally { source.close(); target.close() }
     }
 
+    @Test fun schemaFourteenBackupDropsRetiredFamilyCachesAndRestoresLedgers() = runBlocking {
+        val source = Room.inMemoryDatabaseBuilder(context, FinexyDatabase::class.java).build()
+        val target = Room.inMemoryDatabaseBuilder(context, FinexyDatabase::class.java).build()
+        try {
+            source.dao().upsertLedgers(listOf(LedgerEntity(9, 100, 2, 7, "迁移后账本", "", 1700000000)))
+            val current = JSONObject(PrivacyCrypto.decrypt(LedgerBackup(source, "local").export(password), password))
+            current.put("schema", 14)
+            removePeriodicFieldsForLegacyBackup(current)
+            current.getJSONObject("tables").remove("ledger_write_queue")
+            current.getJSONObject("tables")
+                .put("family_groups", org.json.JSONArray().put(JSONObject()
+                    .put("id", 7).put("ownerUid", 100).put("name", "旧家庭").put("comment", "")
+                    .put("memberCount", 2).put("createdTime", 1700000000).put("updatedAt", 1700000000000)))
+                .put("family_members", org.json.JSONArray().put(JSONObject()
+                    .put("id", 11).put("familyId", 7).put("uid", 100).put("role", 1).put("status", 1)
+                    .put("nickname", "林悦").put("joinedTime", 1700000000).put("updatedAt", 1700000000000)))
+            val backup = LedgerBackup(target, "local")
+            val preview = backup.preview(PrivacyCrypto.encrypt(current.toString(), password), password)
+            assertEquals(0, backup.restore(preview))
+            assertEquals("迁移后账本", target.dao().allLedgers().single().name)
+            target.openHelper.readableDatabase.query("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'family_%'").use {
+                assertFalse(it.moveToFirst())
+            }
+        } finally { source.close(); target.close() }
+    }
+
     @Test fun schemaEightBackupWithoutAccountMappingsStillRestores() = runBlocking {
         val source = Room.inMemoryDatabaseBuilder(context, FinexyDatabase::class.java).build()
         val target = Room.inMemoryDatabaseBuilder(context, FinexyDatabase::class.java).build()
@@ -119,6 +157,8 @@ class PrivacyDataTest {
                 sourceAmountMinor = 100, comment = "旧备份", time = 1L))
             val current = JSONObject(PrivacyCrypto.decrypt(LedgerBackup(source, "local").export(password), password))
             current.put("schema", 8)
+            removePeriodicFieldsForLegacyBackup(current)
+            current.getJSONObject("tables").remove("ledger_write_queue")
             listOf("family_groups", "family_members", "ledgers", "savings_goals").forEach { current.getJSONObject("tables").remove(it) }
             current.getJSONObject("tables").remove("account_mappings")
             current.getJSONObject("tables").remove("scheduled_occurrences")
@@ -141,6 +181,8 @@ class PrivacyDataTest {
                 sourceAmountMinor = 100, comment = "九版备份", time = 1L))
             val current = JSONObject(PrivacyCrypto.decrypt(LedgerBackup(source, "local").export(password), password))
             current.put("schema", 9)
+            removePeriodicFieldsForLegacyBackup(current)
+            current.getJSONObject("tables").remove("ledger_write_queue")
             listOf("family_groups", "family_members", "ledgers", "savings_goals").forEach { current.getJSONObject("tables").remove(it) }
             current.getJSONObject("tables").remove("scheduled_occurrences")
             current.getJSONObject("tables").remove("ai_review_items")
@@ -161,6 +203,8 @@ class PrivacyDataTest {
                 sourceAmountMinor = 100, comment = "十版备份", time = 1L))
             val current = JSONObject(PrivacyCrypto.decrypt(LedgerBackup(source, "local").export(password), password))
             current.put("schema", 10)
+            removePeriodicFieldsForLegacyBackup(current)
+            current.getJSONObject("tables").remove("ledger_write_queue")
             listOf("family_groups", "family_members", "ledgers", "savings_goals").forEach { current.getJSONObject("tables").remove(it) }
             current.getJSONObject("tables").remove("ai_review_items")
             current.getJSONObject("tables").remove("product_assets")
@@ -180,6 +224,8 @@ class PrivacyDataTest {
                 sourceAmountMinor = 100, comment = "十一版备份", time = 1L))
             val current = JSONObject(PrivacyCrypto.decrypt(LedgerBackup(source, "local").export(password), password))
             current.put("schema", 11)
+            removePeriodicFieldsForLegacyBackup(current)
+            current.getJSONObject("tables").remove("ledger_write_queue")
             listOf("family_groups", "family_members", "ledgers", "savings_goals").forEach { current.getJSONObject("tables").remove(it) }
             current.getJSONObject("tables").remove("product_assets")
             current.getJSONObject("tables").remove("exchange_rates")
@@ -199,6 +245,8 @@ class PrivacyDataTest {
                 usefulLifeDays = 1460, residualAmountMinor = 0, bookValueMinor = 200000))
             val current = JSONObject(PrivacyCrypto.decrypt(LedgerBackup(source, "local").export(password), password))
             current.put("schema", 12)
+            removePeriodicFieldsForLegacyBackup(current)
+            current.getJSONObject("tables").remove("ledger_write_queue")
             current.getJSONObject("tables").remove("exchange_rates")
             listOf("family_groups", "family_members", "ledgers", "savings_goals").forEach { current.getJSONObject("tables").remove(it) }
             val preview = LedgerBackup(target, "local").preview(PrivacyCrypto.encrypt(current.toString(), password), password)
@@ -214,6 +262,10 @@ class PrivacyDataTest {
         try {
             val row = TransactionEntity("one", type = 3, categoryName = "其他", sourceAmountMinor = 100, comment = "保留", time = 1L)
             source.dao().upsertTransaction(row); target.dao().upsertTransaction(row)
+            source.dao().upsertLedgers(listOf(LedgerEntity(9, 100, LedgerEntity.TYPE_PERSONAL, name = "共享账本")))
+            source.dao().upsertLedgerAccounts(listOf(LedgerAccountCacheEntity(10, 9, "现金", "CNY", 100, false, 0, 1, 1, 0, "", "", 0, 0)))
+            source.dao().upsertLedgerTransactions(listOf(LedgerTransactionCacheEntity(11, 9, 2, 10, null, 12, "餐饮", 100, 0, "CNY", "共享支出", 1, 480, "[]", false)))
+            source.dao().upsertSyncStatus(SyncStatusEntity(state = SyncRunState.SUCCEEDED))
             val service = LedgerBackup(source, "local")
             val doc = service.preview(service.export(password), password)
             doc.getJSONObject("tables").getJSONArray("transactions").getJSONObject(0).put("type", "bad")
@@ -223,7 +275,14 @@ class PrivacyDataTest {
             try { service.clearLocal("wrong") } catch (_: IllegalArgumentException) { }
             assertEquals(1, source.dao().allTransactions().size)
             service.clearLocal("清空当前账本")
-            assertTrue(source.dao().allTransactions().isEmpty()); assertEquals(1, target.dao().allTransactions().size)
+            assertTrue(source.dao().allTransactions().isEmpty())
+            assertTrue(source.dao().allLedgers().isEmpty())
+            assertTrue(source.dao().observeLedgerAccounts(9).first().isEmpty())
+            assertTrue(source.dao().observeLedgerTransactions(9).first().isEmpty())
+            source.openHelper.readableDatabase.query("SELECT COUNT(*) FROM sync_status").use { cursor ->
+                assertTrue(cursor.moveToFirst()); assertEquals(0, cursor.getInt(0))
+            }
+            assertEquals(1, target.dao().allTransactions().size)
         } finally { source.close(); target.close() }
     }
 }

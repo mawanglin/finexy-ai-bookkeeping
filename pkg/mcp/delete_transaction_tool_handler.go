@@ -9,6 +9,7 @@ import (
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/errs"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/log"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/models"
+	bookkeeping "github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/services"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/settings"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/utils"
 )
@@ -70,12 +71,24 @@ func (h *mcpDeleteTransactionToolHandler) Handle(c *core.WebContext, callToolReq
 		return nil, nil, errs.ErrTransactionIdInvalid
 	}
 
-	uid := user.Uid
+	actorUid := user.Uid
+	ledger, err := bookkeeping.ImportLedger(c, actorUid, c.GetTokenClaims().AgentLedgerId)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Rows belong to the ledger owner; only the granted ledger may be touched, and members only delete their own.
+	uid := ledger.OwnerUid
 	transaction, err := services.GetTransactionService().GetTransactionByTransactionId(c, uid, transactionId)
 
 	if err != nil {
 		log.Errorf(c, "[delete_transaction_tool_handler.Handle] failed to get transaction \"id:%d\" for user \"uid:%d\", because %s", transactionId, uid, err.Error())
 		return nil, nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	if transaction.LedgerId != ledger.LedgerId || (uid != actorUid && transaction.RecorderUid != actorUid) {
+		return nil, nil, errs.ErrTransactionNotFound
 	}
 
 	if transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN {

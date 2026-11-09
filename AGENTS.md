@@ -320,6 +320,19 @@ docker stop finexy-android-e2e
 
 验证：`go test ./...` 45 包通过（CGO_ENABLED=0），CGO SQLite `pkg/services`、`pkg/datastore` 专项通过；`npm run check` 通过（20 文件、38713 项与生产构建）。一次性服务（临时目录 SQLite、端口 18101，已停止删除）上 18 项 API 冒烟通过（双用户注册、账本邀请/预览/接受、成员、概览、删除预览、家庭列表、待确认、AI 列表），真实 Chrome 走通桌面记账与移动端首页，金额正确且无控制台错误。本次未改动 Android 代码，未重新构建 Android；**未完成**：Android instrumentation、隔离 Docker E2E（本环境无模拟器/Docker）、桌面深浅主题与读屏人工验收；8080 运行服务未部署。
 
+### SMTM-PH 功能移植（2026-11-09，基线 1fa46fbc → 500d68ae，v1.9.4）
+
+分支 `port/smtm-20261109`（基于 mayswind 同步后的 main，未推送、未部署）。约定：以后先合并 `mayswind/ezbookkeeping`，再把 `SMTM-PH/finexy-ai-bookkeeping` 的新功能基于合并结果重新实现，不直接 `git merge` SMTM，并保留本仓库自有修改（如 fnOS fpk）。
+
+1. **已移植**：同秒重启 ID 重复修复、issue #48 列表截断、Agent 账本授权与 MCP、支付宝/微信账单导入、AI 设置与模型用量、账本 AI 复核与待处理、账本报告与 CSV 导出、月度预算、月度首页、账本级模板与周期计划、账户卡片与分组、流水与模板幂等创建；Android 同步移植，Room 升到 v26。
+2. **编号**：`ErrAccountCardConflict` 用账户错误码 33，`NormalSubcategoryLedgerReport` 用子类 30；MCP 收据识别工具位 53。
+3. **接口差异**：SMTM 基于旧版整数金额。上游的账户余额和统计金额是最小货币单位字符串，移植代码必须走 `numericBalance` 或 `parseBigDecimal`；Web 里 `Number.isSafeInteger(account.balance)` 对字符串恒为假，类型检查发现不了。Android 账户余额提交保持字符串。
+4. **数据库接口**：`DatabaseSession` 增加 `Distinct/Asc/Desc/QuoteIdentifier/TableName`，`Database` 增加 `DoReadSnapshot`；周期入队保留 `EnqueueWithUtcOffset`。`loadAllAccounts`/`loadAllCategories` 保留上游 `loadingPromise` 去重，叠加 SMTM 的账本校验，过期响应统一 `reject({ stale: true })`。
+5. **有意未移植**：Web 的 `ReleaseUpdateNotice`（写死查 SMTM 仓库的发布）；关于页“检查更新”保持原样。Android 的更新检查保留，地址改为 `mawanglin/finexy-ai-bookkeeping`。SMTM 的 fnOS 打包以本仓库为准。
+6. **踩坑**：`TwoColumnDialogLayout` 新增 `content-before` 插槽和 `hideContent`/`contentInert` 属性，用于承载记账弹窗的复核面板；Web 静态资源只允许 `/img` 等固定目录，`vite.config.ts` 已把 `webp` 归入 `img`；不要 `git add android` 整目录，SMTM 带了 `android/build/` 下的报告文件且未被忽略。
+
+验证：`go test ./...` CGO 开/关全部通过（含 SQLite 报告、预算、复核、幂等专项）；`npm run check` 通过（56 文件、39331 项与生产构建）；Android `assembleDebug`/`assembleDebugAndroidTest`/`lintDebug` 通过，`testDebugUnitTest` 271 项通过（临时 SDK）。隔离本地服务（临时 SQLite，端口 18102，已停止删除）上回归 Agent 22 项、账单导入 10 项，浏览器走通桌面记账、报告明细与金额，以及桌面、移动主要页面无控制台错误。**未完成**：Android instrumentation 与隔离 Docker E2E（本环境无模拟器/Docker）、真实模型的 AI 识别与复核确认、预算保存与账户卡片设计器的界面操作、深浅主题与读屏人工验收；主账本 4 条状态未重测也未改动；8080 运行服务未部署。
+
 ### 阶段 E
 
 完成 TalkBack、最大字体、多尺寸/横屏、主题语义色、导航一致性；将 lint、Room migration、关键 instrumentation 和发布签名验证纳入 CI；生成并验证 release APK/AAB。生物识别成功路径需在已录入指纹的设备上人工验收。

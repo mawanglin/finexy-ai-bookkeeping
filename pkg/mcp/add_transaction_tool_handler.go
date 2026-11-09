@@ -10,6 +10,7 @@ import (
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/errs"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/log"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/models"
+	bookkeeping "github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/services"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/settings"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/utils"
 )
@@ -97,7 +98,17 @@ func (h *mcpAddTransactionToolHandler) Handle(c *core.WebContext, callToolReq *M
 	}
 
 	uid := user.Uid
-	allAccounts, err := services.GetAccountService().GetAllAccountsByUid(c, uid)
+	ledger, err := bookkeeping.ImportLedger(c, uid, c.GetTokenClaims().AgentLedgerId)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if ledger.OwnerUid != uid && len(addTransactionRequest.Tags) > 0 {
+		return nil, nil, errs.ErrNotPermittedToPerformThisAction
+	}
+
+	allAccounts, err := services.GetAccountService().GetAccountsInLedger(c, uid, ledger.LedgerId)
 
 	if err != nil {
 		log.Warnf(c, "[add_transaction_tool_handler.Handle] get account error, because %s", err.Error())
@@ -126,7 +137,7 @@ func (h *mcpAddTransactionToolHandler) Handle(c *core.WebContext, callToolReq *M
 		destinationAccountId = destinationAccount.AccountId
 	}
 
-	allCategories, err := services.GetTransactionCategoryService().GetAllCategoriesByUid(c, uid, 0, -1)
+	allCategories, err := services.GetTransactionCategoryService().GetAllCategoriesInLedger(c, uid, ledger.LedgerId, 0, -1)
 
 	if err != nil {
 		log.Warnf(c, "[add_transaction_tool_handler.Handle] get transaction category error, because %s", err.Error())
@@ -183,11 +194,13 @@ func (h *mcpAddTransactionToolHandler) Handle(c *core.WebContext, callToolReq *M
 		}
 	}
 
-	transaction, err := h.createNewTransactionModel(c, uid, &addTransactionRequest, transactionCategory.CategoryId, sourceAccount.AccountId, destinationAccountId, c.ClientIP())
+	transaction, err := h.createNewTransactionModel(c, ledger.OwnerUid, &addTransactionRequest, transactionCategory.CategoryId, sourceAccount.AccountId, destinationAccountId, c.ClientIP())
 
 	if err != nil {
 		return nil, nil, err
 	}
+
+	transaction.LedgerId, transaction.RecorderUid, transaction.PayerUid = ledger.LedgerId, uid, uid
 
 	transactionEditable := user.CanEditTransactionByTransactionTime(transaction.TransactionTime, time.FixedZone("Transaction Timezone", int(transaction.TimezoneUtcOffset)*60), sourceAccount, destinationAccount)
 
@@ -196,7 +209,7 @@ func (h *mcpAddTransactionToolHandler) Handle(c *core.WebContext, callToolReq *M
 	}
 
 	if !addTransactionRequest.DryRun {
-		err = services.GetTransactionService().CreateTransaction(c, transaction, tagIds, nil)
+		err = services.GetTransactionService().BatchImportTransactions(c, uid, ledger.LedgerId, []*models.Transaction{transaction}, map[int][]int64{0: tagIds}, nil)
 
 		if err != nil {
 			log.Errorf(c, "[add_transaction_tool_handler.Handle] failed to create transaction \"id:%d\" for user \"uid:%d\", because %s", transaction.TransactionId, uid, err.Error())
@@ -211,7 +224,7 @@ func (h *mcpAddTransactionToolHandler) Handle(c *core.WebContext, callToolReq *M
 			accountIds = append(accountIds, destinationAccountId)
 		}
 
-		newAccounts, err := services.GetAccountService().GetAccountsByAccountIds(c, uid, accountIds)
+		newAccounts, err := services.GetAccountService().GetAccountsByAccountIds(c, ledger.OwnerUid, accountIds)
 
 		if err != nil {
 			log.Warnf(c, "[add_transaction_tool_handler.Handle] failed to get latest accounts info after transaction created, because %s", err.Error())

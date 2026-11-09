@@ -78,12 +78,15 @@ var ValidTextualDerivedTokenTypes = map[TextualDerivedTokenType]bool{
 
 // UserTokenClaims represents user token
 type UserTokenClaims struct {
-	UserTokenId string    `json:"userTokenId"`
-	Uid         int64     `json:"jti,string"`
-	Username    string    `json:"username,omitempty"`
-	Type        TokenType `json:"type"`
-	IssuedAt    int64     `json:"iat"`
-	ExpiresAt   int64     `json:"exp"`
+	// Agent grants are loaded from the token record after verification and are never serialized.
+	AgentLedgerId int64     `json:"-"`
+	AgentScopes   []string  `json:"-"`
+	UserTokenId   string    `json:"userTokenId"`
+	Uid           int64     `json:"jti,string"`
+	Username      string    `json:"username,omitempty"`
+	Type          TokenType `json:"type"`
+	IssuedAt      int64     `json:"iat"`
+	ExpiresAt     int64     `json:"exp"`
 }
 
 // NormalTokenAdditionalData represents the additional data of a normal token

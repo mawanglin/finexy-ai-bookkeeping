@@ -65,7 +65,7 @@ func (s *TokenService) GetAllUnexpiredNormalAndMCPTokensByUid(c core.Context, ui
 	now := time.Now().Unix()
 
 	var tokenRecords []*models.TokenRecord
-	err := s.TokenDB(uid).NewSession(c).Cols("uid", "user_token_id", "token_type", "user_agent", "created_unix_time", "expired_unix_time", "last_seen_unix_time").Where("uid=? AND (token_type=? OR token_type=? OR token_type=?) AND expired_unix_time>?", uid, core.USER_TOKEN_TYPE_NORMAL, core.USER_TOKEN_TYPE_MCP, core.USER_TOKEN_TYPE_API, now).Find(&tokenRecords)
+	err := s.TokenDB(uid).NewSession(c).Cols("uid", "user_token_id", "token_type", "user_agent", "created_unix_time", "expired_unix_time", "last_seen_unix_time", "context").Where("uid=? AND (token_type=? OR token_type=? OR token_type=?) AND expired_unix_time>?", uid, core.USER_TOKEN_TYPE_NORMAL, core.USER_TOKEN_TYPE_MCP, core.USER_TOKEN_TYPE_API, now).Find(&tokenRecords)
 
 	return tokenRecords, err
 }
@@ -74,11 +74,28 @@ func (s *TokenService) GetAllUnexpiredNormalAndMCPTokensByUid(c core.Context, ui
 func (s *TokenService) ParseToken(c core.Context, token string, allowedScopes ...core.NormalTokenScope) (*core.UserTokenClaims, core.TokenRecord, error) {
 	parts := strings.Split(token, "-")
 
+	var claims *core.UserTokenClaims
+	var tokenRecord core.TokenRecord
+	var err error
+
 	if len(parts) == 3 && parts[0] == tokenPrefix {
-		return s.parseEncryptedToken(c, parts, allowedScopes...)
+		claims, tokenRecord, err = s.parseEncryptedToken(c, parts, allowedScopes...)
+	} else {
+		claims, tokenRecord, err = s.parseLegacyJWTToken(c, token)
 	}
 
-	return s.parseLegacyJWTToken(c, token)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Agent grants come from the persisted record on both token formats, never from the client.
+	if claims.Type == core.USER_TOKEN_TYPE_API || claims.Type == core.USER_TOKEN_TYPE_MCP {
+		auth := core.ParseAgentAuthorization(tokenRecord.GetContext())
+		claims.AgentScopes = auth.Scopes
+		claims.AgentLedgerId = auth.LedgerId
+	}
+
+	return claims, tokenRecord, nil
 }
 
 // CreateToken generates a new normal token and saves to database
@@ -143,6 +160,38 @@ func (s *TokenService) CreateAPITokenViaCli(c *core.CliContext, user *models.Use
 
 	token, _, tokenRecord, err := s.createToken(c, user, core.USER_TOKEN_TYPE_API, core.TokenUserAgentCreatedViaCli, "", tokenExpiredTimeDuration)
 	return token, tokenRecord, err
+}
+
+// CreateAgentToken creates a named token with explicit permissions persisted in its record.
+func (s *TokenService) CreateAgentToken(c *core.WebContext, user *models.User, tokenType core.TokenType, seconds int64, name string, scopes []string, enabledTools *int64, ledgerIds ...int64) (string, *core.UserTokenClaims, error) {
+	if tokenType != core.USER_TOKEN_TYPE_API && tokenType != core.USER_TOKEN_TYPE_MCP {
+		return "", nil, errs.ErrCurrentInvalidTokenType
+	}
+
+	ledgerId := int64(0)
+
+	if len(ledgerIds) > 0 {
+		ledgerId = ledgerIds[0]
+	}
+
+	if _, _, err := Ledgers.GetLedgerWithAccess(c, user.Uid, ledgerId, func(models.FamilyMemberRole) bool { return true }); err != nil {
+		return "", nil, err
+	}
+
+	context, err := core.NewAgentAuthorization(name, scopes, enabledTools, ledgerId)
+
+	if err != nil {
+		return "", nil, errs.ErrParameterInvalid
+	}
+
+	duration := time.Unix(tokenMaxExpiredAtUnixTime, 0).Sub(time.Now())
+
+	if seconds > 0 {
+		duration = time.Duration(seconds) * time.Second
+	}
+
+	token, claims, _, err := s.createToken(c, user, tokenType, s.getUserAgent(c), context, duration)
+	return token, claims, err
 }
 
 // CreateMCPToken generates a new MCP token and saves to database

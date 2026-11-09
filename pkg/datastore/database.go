@@ -15,6 +15,9 @@ type Database interface {
 	// DoTransaction runs a new database transaction
 	DoTransaction(c core.Context, fn func(sess DatabaseSession) error) error
 
+	// DoReadSnapshot runs a read-only callback against a consistent snapshot
+	DoReadSnapshot(c core.Context, read func(sess DatabaseSession) error, tables ...any) error
+
 	// SetSavePoint sets a save point in the current transaction for Postgres
 	SetSavePoint(sess DatabaseSession, savePointName string) error
 

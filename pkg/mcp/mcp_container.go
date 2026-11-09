@@ -1,14 +1,12 @@
 package mcp
 
 import (
-	"encoding/json/v2"
-
+	"encoding/json"
 	"github.com/invopop/jsonschema"
 	orderedmap "github.com/wk8/go-ordered-map/v2"
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/errs"
-	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/log"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/models"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/settings"
 )
@@ -82,6 +80,13 @@ func InitializeMCPHandlers(config *settings.Config) error {
 	registerMCPTextContentToolHandler(container, MCPAddTransactionToolHandler)
 	registerMCPTextContentToolHandler(container, MCPDeleteTransactionToolHandler)
 
+	for _, name := range []string{"query_import_context", "query_management_context", "preview_bill_import", "map_bill_import", "confirm_bill_import"} {
+		registerMCPTextContentToolHandler(container, &agentImportTool{name: name})
+	}
+
+	registerManagementTools(container)
+	registerMCPTextContentToolHandler(container, MCPRecognizeReceiptImageToolHandler)
+
 	Container = container
 	return nil
 }
@@ -116,22 +121,20 @@ func registerMCPToolHandler[T MCPTextContent | MCPImageContent | MCPAudioContent
 }
 
 func handleTool[T MCPTextContent | MCPImageContent | MCPAudioContent | MCPResourceLink | MCPEmbeddedResource](ctx *core.WebContext, handler MCPToolHandler[T], currentConfig *settings.Config, services MCPAvailableServices, callToolReq *MCPCallToolRequest, user *models.User) (any, error) {
-	enabledTools := core.MCPAllTools
-
-	if context := ctx.GetTokenContext(); context != "" {
-		var tokenContext models.MCPTokenContext
-		err := json.Unmarshal([]byte(context), &tokenContext)
-
-		if err != nil {
-			log.Errorf(ctx, "[mcp_container.handleTool] failed to parse token context \"%s\", because %s", context, err.Error())
-			return nil, errs.ErrInvalidToken
-		}
-
-		enabledTools = tokenContext.EnabledTools
+	if tokenContext := ctx.GetTokenContext(); tokenContext != "" && !json.Valid([]byte(tokenContext)) {
+		return nil, errs.ErrInvalidToken
 	}
+
+	enabledTools := core.ParseAgentAuthorization(ctx.GetTokenContext()).EnabledToolsMask()
 
 	if !handler.ToolType().IsEnabled(enabledTools) {
 		return nil, errs.ErrMCPToolNotEnabled
+	}
+
+	scope := AgentToolScope(callToolReq.Name)
+
+	if scope == "" || !ctx.GetTokenClaims().HasAgentScope(scope) {
+		return nil, errs.ErrAgentPermissionDenied
 	}
 
 	structuredResponse, result, err := handler.Handle(ctx, callToolReq, user, currentConfig, services)
@@ -155,6 +158,7 @@ func handleTool[T MCPTextContent | MCPImageContent | MCPAudioContent | MCPResour
 func createNewMCPToolInfo[T MCPTextContent | MCPImageContent | MCPAudioContent | MCPResourceLink | MCPEmbeddedResource](name string, handler MCPToolHandler[T]) *MCPTool {
 	mcpTool := &MCPTool{
 		ToolType:    handler.ToolType(),
+		Annotations: map[string]bool{"readOnlyHint": AgentToolScope(name) == core.AgentScopeRead, "destructiveHint": AgentToolScope(name) != core.AgentScopeRead, "openWorldHint": name == "recognize_receipt_image"},
 		Name:        name,
 		Description: handler.Description(),
 	}

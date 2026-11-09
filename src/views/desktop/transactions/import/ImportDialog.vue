@@ -1,5 +1,7 @@
 <template>
-    <v-dialog :persistent="!!persistent || loading || loadingPreset || submitting || currentStep !== 'uploadFile' || isModifiedInUploadStep" v-model="showState">
+    <v-dialog class="finexy-dialog finexy-dialog--import"
+              :max-width="currentStep === 'checkData' || currentStep === 'defineColumn' || currentStep === 'executeCustomScript' ? 1200 : 780"
+              :persistent="!!persistent || loading || loadingPreset || submitting || currentStep !== 'uploadFile' || isModifiedInUploadStep" v-model="showState">
         <one-column-dialog-layout :class="{ 'import-transaction-dialog-layout': currentStep === 'defineColumn' || currentStep === 'checkData' }"
                                   :content-class="currentStep === 'defineColumn' || currentStep === 'checkData' ? 'pa-0 import-transaction-dialog-content' : 'pa-0'"
                                   :title="tt('Import Transactions')" :cancel-button-title="currentStep === 'finalResult' ? tt('Close') : tt('Cancel')"
@@ -142,6 +144,7 @@
                           :class="{ 'import-transaction-dialog-window': currentStep === 'defineColumn' || currentStep === 'checkData' }"
                           v-model="currentStep">
                     <v-window-item value="uploadFile">
+                        <p class="px-4 pt-3 mb-0" v-if="fileType === 'alipay_app_csv' || fileType === 'wechat_pay_app'">账单将导入「{{ importLedgerName }}」；请先核对账户和分类，避免重复导入。</p>
                         <div class="pa-4">
                             <v-row>
                                 <v-col cols="12" md="12">
@@ -191,6 +194,12 @@
                                         v-model="fileName"
                                         @click="showOpenFileDialog"
                                     />
+                                </v-col>
+
+                                <v-col cols="12" md="12" v-if="isAlipayArchive">
+                                    <v-text-field type="password" autocomplete="off" persistent-placeholder
+                                                  label="压缩包密码" placeholder="支付宝短信或页面提供的解压密码，仅在本机使用"
+                                                  :disabled="submitting" v-model="archivePassword" />
                                 </v-col>
 
                                 <v-col cols="12" md="12" v-if="isImportDataFromTextbox">
@@ -259,6 +268,8 @@
                         <import-transaction-check-data-tab
                             ref="importTransactionCheckDataTab"
                             :import-transactions="importTransactions"
+                            :ledger-id="importLedgerId"
+                            :file-type="fileType"
                             :disabled="loading || loadingPreset || submitting"
                         />
                     </v-window-item>
@@ -362,6 +373,8 @@ import { type ImportTransactionResponse, ImportTransaction } from '@/models/impo
 
 import { isDefined, isInteger, isBoolean } from '@/lib/common.ts';
 import { findExtensionByType, isFileExtensionSupported } from '@/lib/file.ts';
+import { extractAlipayCsv } from '@/lib/alipay_archive.ts';
+import { useLedgersStore } from '@/stores/ledger.ts';
 import { detectFileEncoding } from '@/lib/chardet/index.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
 import { isTransactionFromAITextRecognitionEnabled, isTransactionFromAIImageRecognitionEnabled } from '@/lib/server_settings.ts';
@@ -396,6 +409,9 @@ const {
     getLocalizedFileEncodingName
 } = useI18n();
 
+const ledgersStore = useLedgersStore();
+const importLedgerId = ref('0');
+const importLedgerName = ref('默认个人账本');
 const settingsStore = useSettingsStore();
 const accountsStore = useAccountsStore();
 const transactionCategoriesStore = useTransactionCategoriesStore();
@@ -434,6 +450,7 @@ const presetReplaceRules = ref<string>('');
 const presetRulesApplied = ref<boolean>(false);
 
 const importFile = ref<File | null>(null);
+const archivePassword = ref<string>('');
 const importImageFiles = ref<BatchImportImageItem[]>([]);
 const importData = ref<string>('');
 const importAdditionalOptions = ref<ImportFileTypeSupportedAdditionalOptions>({});
@@ -520,6 +537,7 @@ const isCustomFileFormat = computed<boolean>(() => fileType.value === 'dsv' || f
 const isImportDataFromTextbox = computed<boolean>(() => allSupportedImportFileTypesMap.value[fileType.value]?.dataFromTextbox ?? false);
 const needAITextRecognition = computed<boolean>(() => allSupportedImportFileTypesMap.value[fileType.value]?.needAITextRecognition ?? false);
 const isAIImageImport = computed<boolean>(() => fileType.value === 'ai_image');
+const isAlipayArchive = computed<boolean>(() => fileType.value === 'alipay_app_csv' && importFile.value?.name.toLowerCase().endsWith('.zip') === true);
 const needAIImageRecognition = computed<boolean>(() => allSupportedImportFileTypesMap.value[fileType.value]?.needAIImageRecognition ?? false);
 const supportedAdditionalOptions = computed<ImportFileTypeSupportedAdditionalOptions | undefined>(() => allSupportedImportFileTypesMap.value[fileType.value]?.supportedAdditionalOptions);
 const supportedAIAdditionalPrompt = computed<boolean>(() => !!allSupportedImportFileTypesMap.value[fileType.value]?.supportedAIAdditionalPrompt);
@@ -632,6 +650,10 @@ const allSupportedImportFileTypesMap = computed<Record<string, LocalizedImportFi
 });
 
 const supportedImportFileExtensions = computed<string | undefined>(() => {
+    if (fileType.value === 'alipay_app_csv') {
+        return '.csv,.zip';
+    }
+
     if (allFileSubTypes.value && allFileSubTypes.value.length) {
         const subTypeExtensions = findExtensionByType(allFileSubTypes.value, fileSubType.value);
 
@@ -706,13 +728,15 @@ function loadInitFileTypeFromSettings(): void {
     }
 }
 
-function open(): Promise<void> {
+function open(initialFileType?: string): Promise<void> {
+    importLedgerId.value = ledgersStore.selectedLedgerId;
+    importLedgerName.value = ledgersStore.selectedLedger.name;
     loading.value = true;
     loadingPreset.value = false;
-    fileType.value = 'ezbookkeeping';
-    fileSubType.value = 'ezbookkeeping_csv';
+    fileType.value = initialFileType || 'ezbookkeeping';
+    fileSubType.value = initialFileType === 'wechat_pay_app' ? 'wechat_pay_app_xlsx' : initialFileType || 'ezbookkeeping_csv';
 
-    if (settingsStore.appSettings.rememberLastSelectedFileTypeInImportTransactionDialog && settingsStore.appSettings.lastSelectedFileTypeInImportTransactionDialog) {
+    if (!initialFileType && settingsStore.appSettings.rememberLastSelectedFileTypeInImportTransactionDialog && settingsStore.appSettings.lastSelectedFileTypeInImportTransactionDialog) {
         loadInitFileTypeFromSettings();
     }
 
@@ -739,6 +763,7 @@ function open(): Promise<void> {
     hasImportedTransactions.value = false;
 
     importFile.value = null;
+    archivePassword.value = '';
     importData.value = '';
     importAdditionalOptions.value = Object.assign({}, supportedAdditionalOptions.value ?? {});
     importAIAdditionalPrompt.value = '';
@@ -753,13 +778,15 @@ function open(): Promise<void> {
     clearImportImageFiles();
 
     const promises: Promise<unknown>[] = [
-        accountsStore.loadAllAccounts({ force: false }),
-        transactionCategoriesStore.loadAllCategories({ force: false }),
-        transactionTagsStore.loadAllTags({ force: false }),
+        accountsStore.loadAllAccounts({ force: true, ledgerId: importLedgerId.value }),
+        transactionCategoriesStore.loadAllCategories({ force: true, ledgerId: importLedgerId.value }),
+        transactionTagsStore.loadAllTags({ force: true }),
         importPresetsStore.loadAllPresetBasicInfos({ force: false })
     ];
 
-    Promise.all(promises).then(() => {
+    Promise.all(promises.map(promise => promise.catch((error: unknown) => {
+        if (!error || typeof error !== 'object' || !('isUpToDate' in error) || !error.isUpToDate) throw error;
+    }))).then(() => {
         loading.value = false;
     }).catch(error => {
         logger.error('failed to load essential data for importing transaction', error);
@@ -884,7 +911,7 @@ function setImportFile(event: Event): void {
         autoDetectedFileEncoding.value = undefined;
         el.value = '';
 
-        if (allSupportedEncodings.value) {
+        if (allSupportedEncodings.value && !isAlipayArchive.value) {
             detectingFileEncoding.value = true;
 
             detectFileEncoding(importFile.value).then(detectedEncoding => {
@@ -929,8 +956,8 @@ function reloadBasisData(): void {
     loading.value = true;
 
     Promise.allSettled([
-        accountsStore.loadAllAccounts({ force: true }),
-        transactionCategoriesStore.loadAllCategories({ force: true }),
+        accountsStore.loadAllAccounts({ force: true, ledgerId: importLedgerId.value }),
+        transactionCategoriesStore.loadAllCategories({ force: true, ledgerId: importLedgerId.value }),
         transactionTagsStore.loadAllTags({ force: true })
     ]).then(results => {
         loading.value = false;
@@ -972,6 +999,7 @@ function recognizeImage(item: BatchImportImageItem, additionalPrompt?: string): 
             importImageCancelRecognizingUuid.value = generateRandomUUID();
 
             transactionsStore.parseImportTransaction({
+                ledgerId: importLedgerId.value,
                 fileType: 'ai_image',
                 aiAdditionalPrompt: additionalPrompt,
                 importFile: compressedFile,
@@ -1066,7 +1094,7 @@ function cancelBatchRecognizeImages(): void {
     snackbar.value?.showMessage('User Canceled');
 }
 
-function parseData(): void {
+async function parseData(): Promise<void> {
     let uploadFile: File;
     let type: string = fileType.value;
     let encoding: string | undefined = undefined;
@@ -1148,7 +1176,26 @@ function parseData(): void {
             }
         }
 
-        uploadFile = importFile.value;
+        if (isAlipayArchive.value) {
+            if (!archivePassword.value) {
+                snackbar.value?.showError('请输入压缩包密码');
+                return;
+            }
+
+            submitting.value = true;
+
+            try {
+                uploadFile = await extractAlipayCsv(importFile.value, archivePassword.value);
+            } catch (error) {
+                submitting.value = false;
+                snackbar.value?.showError(error instanceof Error ? error.message : '解压失败');
+                return;
+            }
+
+            submitting.value = false;
+        } else {
+            uploadFile = importFile.value;
+        }
     } else if (isImportDataFromTextbox.value) {
         if (!importData.value) {
             snackbar.value?.showError('No data to import');
@@ -1271,6 +1318,7 @@ function parseData(): void {
         submitting.value = true;
 
         transactionsStore.parseImportTransaction({
+            ledgerId: importLedgerId.value,
             fileType: type,
             additionalOptions: importAdditionalOptions.value,
             aiAdditionalPrompt: supportedAIAdditionalPrompt.value ? importAIAdditionalPrompt.value : undefined,
@@ -1354,6 +1402,11 @@ function submit(): void {
         return;
     }
 
+    if (ledgersStore.selectedLedgerId !== importLedgerId.value) {
+        snackbar.value?.showMessage('账本已切换，请关闭后重新预览账单');
+        return;
+    }
+
     confirmDialog.value?.open('format.misc.confirmImportTransactions', {
         count: formatNumberToLocalizedNumerals(transactions.length)
     }).then(() => {
@@ -1390,6 +1443,7 @@ function submit(): void {
         }
 
         transactionsStore.importTransactions({
+            ledgerId: importLedgerId.value,
             transactions: transactions,
             clientSessionId: clientSessionId.value
         }).then(response => {
@@ -1536,6 +1590,7 @@ watch(selectedPreset, (newValue) => {
 });
 
 watch(fileType, (newValue) => {
+    archivePassword.value = '';
     if (!selectedPreset.value) {
         const subFileTypes = allSupportedImportFileTypesMap.value[newValue]?.subTypes;
 
@@ -1568,7 +1623,7 @@ watch(fileSubType, (newValue) => {
         }
     }
 
-    let supportedExtensions: string | undefined = findExtensionByType(allFileSubTypes.value, newValue);
+    let supportedExtensions: string | undefined = fileType.value === 'alipay_app_csv' ? '.csv,.zip' : findExtensionByType(allFileSubTypes.value, newValue);
 
     if (!supportedExtensions) {
         supportedExtensions = allSupportedImportFileTypesMap.value[fileType.value]?.extensions;

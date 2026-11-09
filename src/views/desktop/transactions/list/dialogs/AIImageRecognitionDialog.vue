@@ -1,5 +1,8 @@
 <template>
-    <v-dialog width="800" :persistent="loading || recognizing || !!imageFile" v-model="showState" @paste="onPaste">
+    <v-dialog class="finexy-dialog finexy-subdialog finexy-ai-recognition-dialog"
+              width="800" max-width="calc(100vw - 24px)" max-height="calc(100dvh - 24px)"
+              :z-index="4700"
+              :persistent="loading || recognizing || !!imageFile" v-model="showState" @paste="onPaste">
         <one-column-dialog-layout content-class="pa-0" content-style="height: 500px"
                                   :disabled="loading || recognizing" :loading="loading || recognizing"
                                   :title="tt('AI Image Recognition')"
@@ -32,7 +35,12 @@
                         <span class="text-title-medium font-weight-bold pa-2" v-else-if="recognizing">{{ tt('AI can make mistakes. Check important info.') }}</span>
                     </div>
                     <v-img :class="{ 'cursor-pointer': !loading && !recognizing && !isDragOver, 'h-100': true }"
-                           :src="imageSrc" @click="showOpenImageDialog">
+                           :src="imageSrc"
+                           role="button" tabindex="0"
+                           :aria-label="tt('Click here to select a receipt or transaction image')"
+                           @click="showOpenImageDialog"
+                           @keydown.enter="showOpenImageDialog"
+                           @keydown.space.prevent="showOpenImageDialog">
                         <template #placeholder>
                             <div :class="{ 'w-100 h-100': true, 'bg-grey-200': !isDarkMode, 'bg-grey-50': isDarkMode }"></div>
                         </template>
@@ -257,3 +265,102 @@ defineExpose({
     open
 });
 </script>
+
+<style>
+.v-overlay.finexy-dialog.finexy-ai-recognition-dialog.v-overlay--active {
+    z-index: 4700 !important;
+}
+
+.v-overlay.finexy-dialog.finexy-ai-recognition-dialog .v-card-title::before {
+    content: "FINEXY / AI";
+}
+
+.ai-recognition-card {
+    max-height: min(680px, calc(100dvh - 24px));
+}
+
+.ai-recognition-body {
+    min-height: 360px;
+    height: min(480px, calc(100dvh - 190px));
+    padding-top: 18px !important;
+    padding-bottom: 18px !important;
+    background: linear-gradient(180deg, #fff 0, #fbfbfc 100%);
+}
+
+.ai-recognition-canvas {
+    min-height: 320px;
+    overflow: hidden;
+    border: 1px dashed var(--finexy-dialog-line);
+    border-radius: 16px;
+    background: var(--finexy-dialog-panel);
+}
+
+.ai-recognition-canvas:focus-within {
+    border-color: rgba(240, 85, 55, .72);
+    box-shadow: 0 0 0 3px rgba(240, 85, 55, .1);
+}
+
+.v-overlay.finexy-ai-recognition-dialog .ai-recognition-canvas .v-img__placeholder > div {
+    background: var(--finexy-dialog-panel) !important;
+}
+
+.v-overlay.finexy-ai-recognition-dialog .dropzone h3,
+.v-overlay.finexy-ai-recognition-dialog .dropzone span,
+.v-overlay.finexy-ai-recognition-dialog .dropzone.dropzone-dark h3,
+.v-overlay.finexy-ai-recognition-dialog .dropzone.dropzone-dark span {
+    color: var(--finexy-dialog-ink) !important;
+    text-shadow: none !important;
+}
+
+.ai-recognition-actions {
+    flex: 0 0 auto;
+}
+
+.dropzone {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    pointer-events: none;
+    border-radius: 16px;
+    z-index: 10;
+
+    h3, span {
+        color: rgb(var(--v-theme-on-grey-200)) !important;
+        text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
+    }
+
+    &.dropzone-dark {
+        h3, span {
+            color: rgb(var(--v-theme-on-grey-100)) !important;
+            text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+        }
+    }
+}
+
+.dropzone-blurry-bg {
+    /* stylelint-disable property-no-vendor-prefix */
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+}
+
+.dropzone-dragover {
+    border: 3px dashed var(--finexy-dialog-accent);
+    background: rgba(240, 85, 55, .06);
+}
+
+@media (max-width: 700px) {
+    .ai-recognition-card {
+        max-height: calc(100dvh - 16px);
+    }
+
+    .ai-recognition-body {
+        min-height: 300px;
+        height: calc(100dvh - 180px);
+    }
+
+    .ai-recognition-canvas {
+        min-height: 260px;
+    }
+}
+</style>

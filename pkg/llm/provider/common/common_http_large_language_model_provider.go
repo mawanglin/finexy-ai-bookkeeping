@@ -4,12 +4,14 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/errs"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/httpclient"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/llm/data"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/llm/provider"
+	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/llm/usage"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/log"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/settings"
 )
@@ -27,6 +29,7 @@ type HttpLargeLanguageModelAdapter interface {
 type CommonHttpLargeLanguageModelProvider struct {
 	provider.LargeLanguageModelProvider
 	adapter    HttpLargeLanguageModelAdapter
+	config     settings.LLMConfig
 	httpClient *http.Client
 }
 
@@ -50,21 +53,27 @@ func (p *CommonHttpLargeLanguageModelProvider) GetJsonResponse(c core.Context, u
 }
 
 func (p *CommonHttpLargeLanguageModelProvider) getTextualResponse(c core.Context, uid int64, currentLLMConfig *settings.LLMConfig, request *data.LargeLanguageModelRequest, responseType data.LargeLanguageModelResponseFormat) (*data.LargeLanguageModelTextualResponse, error) {
+	started := time.Now()
+	meter := usage.NewRecord(uid, &p.config)
+	defer func() {
+		meter.DurationMs = time.Since(started).Milliseconds()
+
+		if err := usage.Save(c, meter); err != nil {
+			log.Warnf(c, "[llm.usage] unable to persist metering")
+		}
+	}()
+
 	httpRequest, err := p.adapter.BuildTextualRequest(c, uid, request, responseType)
 
 	if err != nil {
-		log.Errorf(c, "[common_http_large_language_model_provider.getTextualResponse] failed to build requests for user \"uid:%d\", because %s", uid, err.Error())
+		log.Errorf(c, "[common_http_large_language_model_provider.getTextualResponse] failed to build requests for user \"uid:%d\", error type %T", uid, err)
 		return nil, errs.ErrFailedToRequestRemoteApi
 	}
-
-	httpRequest = httpRequest.WithContext(httpclient.CustomHttpResponseLog(c, func(data []byte) {
-		log.Debugf(c, "[common_http_large_language_model_provider.getTextualResponse] response is %s", data)
-	}))
 
 	resp, err := p.httpClient.Do(httpRequest)
 
 	if err != nil {
-		log.Errorf(c, "[common_http_large_language_model_provider.getTextualResponse] failed to request large language model api for user \"uid:%d\", because %s", uid, err.Error())
+		log.Errorf(c, "[common_http_large_language_model_provider.getTextualResponse] failed to request large language model api for user \"uid:%d\", error type %T", uid, err)
 		return nil, errs.ErrFailedToRequestRemoteApi
 	}
 
@@ -76,13 +85,23 @@ func (p *CommonHttpLargeLanguageModelProvider) getTextualResponse(c core.Context
 		return nil, errs.ErrFailedToRequestRemoteApi
 	}
 
-	return p.adapter.ParseTextualResponse(c, uid, body, responseType)
+	if err != nil {
+		return nil, errs.ErrFailedToRequestRemoteApi
+	}
+
+	usage.ApplyReportedUsage(meter, body)
+	result, parseErr := p.adapter.ParseTextualResponse(c, uid, body, responseType)
+	meter.Success = parseErr == nil
+
+	return result, parseErr
 }
 
 // NewCommonHttpLargeLanguageModelProvider creates a http adapter based large language model provider instance
-func NewCommonHttpLargeLanguageModelProvider(llmConfig *settings.LLMConfig, enableResponseLog bool, adapter HttpLargeLanguageModelAdapter) *CommonHttpLargeLanguageModelProvider {
+func NewCommonHttpLargeLanguageModelProvider(llmConfig *settings.LLMConfig, _ bool, adapter HttpLargeLanguageModelAdapter) *CommonHttpLargeLanguageModelProvider {
 	return &CommonHttpLargeLanguageModelProvider{
-		adapter:    adapter,
-		httpClient: httpclient.NewHttpClient(llmConfig.LargeLanguageModelAPIRequestTimeout, llmConfig.LargeLanguageModelAPIProxy, llmConfig.LargeLanguageModelAPISkipTLSVerify, core.GetOutgoingUserAgent(), enableResponseLog, []uint16{}),
+		adapter: adapter,
+		config:  *llmConfig,
+		// Model responses can contain financial details even when debug logging is enabled.
+		httpClient: httpclient.NewHttpClient(llmConfig.LargeLanguageModelAPIRequestTimeout, llmConfig.LargeLanguageModelAPIProxy, llmConfig.LargeLanguageModelAPISkipTLSVerify, core.GetOutgoingUserAgent(), false, []uint16{}),
 	}
 }

@@ -30,6 +30,7 @@ export class Transaction implements TransactionInfoResponse {
     public tagIds: string[];
     public comment: string;
     public editable: boolean;
+    public submissionClientSessionId?: string;
 
     private _pictures?: TransactionPicture[];
     private _geoLocation?: TransactionGeoLocation;
@@ -294,6 +295,10 @@ export class Transaction implements TransactionInfoResponse {
             tagIds: this.tagIds,
             pictures: this.pictures,
             comment: this.comment,
+            time: this.time,
+            timeZone: this.timeZone,
+            utcOffset: this.utcOffset,
+            geoLocation: this.getNormalizedGeoLocation(),
         };
     }
 
@@ -395,9 +400,9 @@ export class Transaction implements TransactionInfoResponse {
             '', // timeSequenceId
             transactionDraft.type, // type
             transactionDraft.categoryId ?? '', // categoryId
-            0, // time
-            undefined, // only in new transaction
-            0, // utcOffset
+            transactionDraft.time ?? 0,
+            transactionDraft.timeZone,
+            transactionDraft.utcOffset ?? 0,
             transactionDraft.sourceAccountId ?? '', // sourceAccountId
             transactionDraft.destinationAccountId ?? '', // destinationAccountId
             transactionDraft.sourceAmount ?? 0, // sourceAmount
@@ -418,6 +423,17 @@ export class Transaction implements TransactionInfoResponse {
             transaction.setPictures(pictures);
         }
 
+        transaction.setGeoLocation(transactionDraft.geoLocation);
+
+        return transaction;
+    }
+
+    public static ofCreateRequest(request: TransactionCreateRequest): Transaction {
+        const transaction = Transaction.of({ ...request, id: '', timeSequenceId: '', editable: true,
+            // The editor keeps a mirrored amount for single-account flows.
+            // Restoring API destinationAmount=0 would trigger its amount watcher.
+            destinationAmount: request.type === TransactionType.Transfer ? request.destinationAmount : request.sourceAmount });
+        transaction.setPictures(request.pictureIds.map(pictureId => TransactionPicture.of({ pictureId, originalUrl: '' })));
         return transaction;
     }
 }
@@ -515,6 +531,12 @@ export class TransactionTagFilter {
 }
 
 export interface TransactionDraft {
+    readonly ledgerId?: string;
+    readonly clientSessionId?: string;
+    readonly time?: number;
+    readonly timeZone?: string;
+    readonly utcOffset?: number;
+    readonly geoLocation?: TransactionGeoLocationRequest;
     readonly type?: number;
     readonly categoryId?: string;
     readonly sourceAccountId?: string;
@@ -525,6 +547,15 @@ export interface TransactionDraft {
     readonly tagIds?: string[];
     readonly pictures?: TransactionPictureInfoBasicResponse[];
     readonly comment?: string;
+}
+
+export interface PendingTransactionCreate {
+    readonly clientSessionId: string;
+    readonly request: TransactionCreateRequest;
+    readonly pictures?: readonly TransactionPictureInfoBasicResponse[];
+    /** A validated creation reply is durable before optional UI cleanup. Once
+     * present, recovery may only read this ID; it must never issue another add. */
+    readonly receipt?: { readonly id: string };
 }
 
 export interface TransactionGeoLocationRequest {
@@ -613,6 +644,7 @@ export interface TransactionCreateBatchRequest {
 }
 
 export interface TransactionImportRequest {
+    readonly ledgerId?: string;
     readonly transactions: TransactionCreateRequest[];
     readonly clientSessionId: string;
 }

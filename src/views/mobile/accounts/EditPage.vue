@@ -3,12 +3,15 @@
         <f7-navbar>
             <f7-nav-left :class="{ 'disabled': loading }" :back-link="tt('Back')"></f7-nav-left>
             <f7-nav-title :title="tt(title)"></f7-nav-title>
-            <f7-nav-right :class="{ 'navbar-compact-icons': true, 'disabled': loading }">
+            <f7-nav-right v-if="!ledgerContextChanged" :class="{ 'navbar-compact-icons': true, 'disabled': loading }">
                 <f7-link icon-f7="ellipsis" :class="{ 'disabled': account.type !== AccountType.MultiSubAccounts.type }" :aria-label="tt('More')" @click="showMoreActionSheet = true"></f7-link>
                 <f7-link icon-f7="checkmark_alt" :class="{ 'disabled': inputIsEmpty || submitting }" :aria-label="tt('Save')" @click="save"></f7-link>
             </f7-nav-right>
         </f7-navbar>
 
+        <ledger-context-notice />
+        <f7-block v-if="ledgerContextChanged" role="alert">账本已切换，请返回原账本重新打开账户编辑。</f7-block>
+        <template v-if="!ledgerContextChanged">
         <f7-list strong inset dividers class="margin-vertical-half skeleton-text" v-if="loading">
             <f7-list-item class="list-item-with-header-and-title" header="Account Category" title="Category"></f7-list-item>
             <f7-list-item class="list-item-with-header-and-title" header="Account Type" title="Account Type"></f7-list-item>
@@ -644,6 +647,7 @@
                 <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
             </f7-actions-group>
         </f7-actions>
+        </template>
     </f7-page>
 </template>
 
@@ -656,6 +660,10 @@ import { useI18nUIComponents, showLoading, hideLoading } from '@/lib/ui/mobile.t
 import { useAccountEditPageBase } from '@/views/base/accounts/AccountEditPageBase.ts';
 
 import { useAccountsStore } from '@/stores/account.ts';
+import { useLedgersStore } from '@/stores/ledger.ts';
+import { DefaultLedgerId } from '@/models/ledger.ts';
+import { mobileLedgerUnsupportedMessage } from '@/lib/mobile_ledger.ts';
+import LedgerContextNotice from '@/components/mobile/LedgerContextNotice.vue';
 
 import { itemAndIndex } from '@/core/base.ts';
 import type { LocalizedCurrencyInfo } from '@/core/currency.ts';
@@ -729,6 +737,9 @@ const {
 } = useAccountEditPageBase();
 
 const accountsStore = useAccountsStore();
+const ledgersStore = useLedgersStore();
+const editLedgerId = ledgersStore.selectedLedgerId;
+const ledgerContextChanged = computed(() => ledgersStore.selectedLedgerId !== editLedgerId || editLedgerId !== DefaultLedgerId);
 
 const DEFAULT_ACCOUNT_CONTEXT: AccountContext = {
     showIconSelectionSheet: false,
@@ -779,6 +790,7 @@ function formatTime(unixTime?: number): string {
 }
 
 function init(): void {
+    if (ledgerContextChanged.value) return;
     const query = props.f7route.query;
     clientSessionId.value = generateRandomUUID();
 
@@ -790,6 +802,7 @@ function init(): void {
         accountsStore.getAccount({
             accountId: editAccountId.value
         }).then(response => {
+            if (ledgerContextChanged.value) return;
             setAccount(response);
             subAccountContexts.value = [];
 
@@ -812,6 +825,7 @@ function init(): void {
 }
 
 function save(): void {
+    if (ledgerContextChanged.value) { showToast(mobileLedgerUnsupportedMessage); return; }
     const router = props.f7router;
     const problemMessage = inputEmptyProblemMessage.value;
 
@@ -889,6 +903,7 @@ function showLastReconciledDateTimeDialog(accountContext: AccountContext, sheetM
 }
 
 function onPageAfterIn(): void {
+    if (ledgerContextChanged.value) return;
     routeBackOnError(props.f7router, loadingError);
 }
 

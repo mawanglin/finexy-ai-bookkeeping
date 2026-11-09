@@ -33,7 +33,7 @@ func initFamilyTestEnvironment(t *testing.T) {
 		new(models.FamilyGroup), new(models.FamilyMember), new(models.FamilyInvitation),
 		new(models.Ledger), new(models.LedgerMember), new(models.LedgerInvitation), new(models.SavingsGoal), new(models.SavingsGoalFund), new(models.Account), new(models.Transaction),
 		new(models.TransactionCategory), new(models.TransactionTagIndex), new(models.TransactionPictureInfo),
-		new(models.TransactionTemplate), new(models.ScheduledOccurrence)))
+		new(models.TransactionTemplate), new(models.ScheduledOccurrence), new(models.MonthlyBudget), new(models.AIReviewItem)))
 	require.NoError(t, datastore.Container.UserStore.SyncStructs(new(models.User)))
 
 	require.NoError(t, uuid.InitializeUuidGenerator(&settings.Config{
@@ -176,6 +176,7 @@ func TestFamilyLedgerAndGoalServiceFlow(t *testing.T) {
 		Type: models.LEDGER_TYPE_FAMILY, FamilyId: group.FamilyGroupId, Name: "管理员建立的家庭账本",
 	})
 	require.NoError(t, err)
+	require.Equal(t, group.OwnerUid, adminLedger.OwnerUid)
 	adminGoal, err := SavingsGoals.CreateSavingsGoal(nil, 200, &models.SavingsGoalCreateRequest{
 		LedgerId: adminLedger.LedgerId, Name: "共同教育金", TargetAmount: 50000,
 	})
