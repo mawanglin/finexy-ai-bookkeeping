@@ -183,6 +183,8 @@ internal fun FinexyApp(store: SecureStore, isLightTheme: Boolean, devicePreferen
         var savingsGoalsPage by rememberSaveable { mutableStateOf(false) }
         var savingsGoalsLedgerId by rememberSaveable { mutableStateOf(LedgerEntity.DEFAULT_LEDGER_ID) }
         var monthlyBudgetPage by rememberSaveable { mutableStateOf(false) }
+        var aiUsagePage by rememberSaveable { mutableStateOf(false) }
+        var agentAccessPage by rememberSaveable { mutableStateOf(false) }
         var monthlyBudgetLedgerId by rememberSaveable { mutableStateOf(LedgerEntity.DEFAULT_LEDGER_ID) }
         var monthlyBudgetShowAmounts by rememberSaveable { mutableStateOf(true) }
         var reportPage by rememberSaveable { mutableStateOf(false) }
@@ -254,6 +256,8 @@ internal fun FinexyApp(store: SecureStore, isLightTheme: Boolean, devicePreferen
             aiReviewPage -> key(activeLedgerId) { LedgerAIReviewPage(store, repository, localMode, activeLedgerId, { clearPendingRoute(); aiReviewPage = false }, initialPendingLocation = initialPendingLocation.takeIf { wasPendingRoute }) {
                 clearPendingRoute(); aiReviewPage = false; aiRecognitionPage = true
             } }
+            aiUsagePage -> AiUsagePage(store, localMode) { aiUsagePage = false }
+            agentAccessPage -> AgentAccessPage(store, localMode) { agentAccessPage = false }
             productAssetsPage -> ProductAssetsPage(store, repository, localMode) { productAssetsPage = false }
             exchangeRatesPage -> ExchangeRatesPage(store, repository, localMode) { exchangeRatesPage = false }
             savingsGoalsPage -> SavingsGoalsPage(store, repository, localMode, savingsGoalsLedgerId) { savingsGoalsPage = false }
@@ -270,6 +274,8 @@ internal fun FinexyApp(store: SecureStore, isLightTheme: Boolean, devicePreferen
                 onAIRecognition = { aiRecognitionPage = true }, onAIReviews = { aiReviewPage = true },
                 onProductAssets = { productAssetsPage = true },
                 onExchangeRates = { exchangeRatesPage = true },
+                onAiUsage = { aiUsagePage = true },
+                onAgentAccess = { agentAccessPage = true },
                 onSavingsGoals = { ledgerId -> savingsGoalsLedgerId = ledgerId; savingsGoalsPage = true },
                 onMonthlyBudget = { ledgerId, showAmounts -> initialTab = 4; monthlyBudgetLedgerId = ledgerId; monthlyBudgetShowAmounts = showAmounts; monthlyBudgetPage = true },
                 onReport = { showAmounts -> reportShowAmounts = showAmounts; reportPage = true },
@@ -307,7 +313,7 @@ private fun LedgerContent(store: SecureStore, repository: TransactionRepository,
     localMode: Boolean, isLightTheme: Boolean, devicePreferences: UserPreferences, onDevicePreferencesChange: (UserPreferences) -> Unit, onPrivacy: () -> Unit, onSecurity: () -> Unit,
     onNormalTemplates: (Long) -> Unit, pendingTemplateSeed: TemplateEntrySeed?, onTemplateSeedConsumed: () -> Unit,
     onSchedulePlans: () -> Unit, onOccurrenceReview: () -> Unit, onAIRecognition: () -> Unit, onAIReviews: () -> Unit,
-    onProductAssets: () -> Unit, onExchangeRates: () -> Unit,
+    onProductAssets: () -> Unit, onExchangeRates: () -> Unit, onAiUsage: () -> Unit, onAgentAccess: () -> Unit,
     onSavingsGoals: (Long) -> Unit, onMonthlyBudget: (Long, Boolean) -> Unit, onReport: (Boolean) -> Unit, onFamily: () -> Unit,
     pendingAIReviewItem: AIReviewItemEntity?, onAIReviewDraftConsumed: () -> Unit, onConnect: () -> Unit, initialTab: Int = 0,
     selectedLedgerId: Long, onSelectLedger: (Long) -> Unit, onRequestedTabConsumed: () -> Unit,
@@ -1130,7 +1136,9 @@ private fun LedgerContent(store: SecureStore, repository: TransactionRepository,
                 onOpenOccurrenceReview = onOccurrenceReview,
                 onOpenSavingsGoals = { onSavingsGoals(selectedLedgerId) },
                 onOpenMonthlyBudget = { onMonthlyBudget(selectedLedgerId, preferences.showAmountInHomePage) },
-                onOpenFamily = onFamily)
+                onOpenFamily = onFamily,
+                onOpenAiUsage = onAiUsage,
+                onOpenAgentAccess = onAgentAccess)
         }
     }
 }

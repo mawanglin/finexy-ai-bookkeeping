@@ -358,6 +358,24 @@ Finexy 用工作台页面替换了上游的分类页，原来新建二级分类�
 
 用户反馈已记录的流水无法修改。实际是工作台流水页详情里的“编辑详情”打开的是只读“交易详情”，字段外观与可编辑时相同但不能输入，要再点标题旁的铅笔图标才进入编辑。现在 `TransactionEditOptions` 新增 `startInEditMode`，“编辑详情”对可编辑流水直接进入编辑模式（余额调整仍为查看）。首页近期活动点击仍打开查看，可用铅笔进入编辑。验证：默认账本与共享账本中所有者从流水页“编辑详情”改金额并保存成功，`npm run check` 通过。
 
+### 三端功能对齐（2026-11-09 起，只增不删）
+
+约定：网页（桌面 + 手机）、fpk、Android 三端功能对齐，**只增不删**——不删除任一端已有的功能，也不为对齐而降级。fpk 只是把服务端和网页前端打包到飞牛，与网页同一份代码，所以实际对齐对象是网页和 Android。Android 独有、不对齐的能力：本地模式、账户/分类映射、同步冲突处理、WorkManager 离线队列、生物识别、加密备份。
+
+盘点方法：对比 `src/lib/services.ts` 中网页实际在用的接口和 Android 源码，网页在用而 Android 没有的有 90 个接口，合并成下列功能缺口（家庭组 `family/*` 是旧接口，两端都已改用账本接口，不算缺口）。
+
+| 批次 | Android 缺失的功能 | 对应接口 | 状态 |
+| --- | --- | --- | --- |
+| 1 | AI 用量与余额；Agent 接入（MCP 开关、生成/撤销 API 与 MCP 令牌） | `llm/usage`、`llm/balance`、`agent/access`、`tokens/generate/*` | 已完成（见下） |
+| 2 | 流水批量操作（删除、改分类、改账户、批量标签）；流水图片附件；标签分组；对账单与已对账标记；账户卡片外观 | `transactions/batch_*`、`transaction/pictures/*`、`transaction/tags/groups/*`、`transactions/reconciliation_statements`、`accounts/card/*` | 待做 |
+| 3 | 通用数据导入（CSV 等文件与导入预设）；数据导出 CSV 与统计；清除数据；AI 报告；自定义图标；头像 | `transactions/parse_custom_file`、`import_presets/*`、`data/*`、`ai/reports/*`、`custom_icons/*`、`users/avatar/*` | 待做 |
+| 4 | 自定义分析（Insights 浏览器） | `insights/explorers/*` | 待做，体量最大 |
+| 5 | 账本改名与退出账本入口；服务端版本显示；外部登录绑定；邮箱验证重发 | `ledger/modify`、`ledger/member/leave`、`systems/version`、`users/external_auth/*`、`users/verify_email/resend` | 待做 |
+
+第 1 批实现（Android）：设置页新增“AI 与 Agent”分组和两个页面，代码在 `AgentAiScreens.kt`，接口与解析在 `data/AgentAiData.kt`。“AI 用量与余额”显示今日、本月、累计调用量，DeepSeek 余额（非官方接口显示“不支持查询”，未配置密钥显示对应提示）和最近调用。“Agent 接入”可开关账号级 MCP、生成 API 或 MCP 令牌（名称、有效期 1 小时至 30 天、四项授权范围、授权账本、需 Finexy 登录密码）、令牌只显示一次并可复制、列出已授权令牌并确认后撤销。密码和已生成的令牌在离开页面时清除，不进入 `rememberSaveable`。本机模式下两个入口置灰。验证：`assembleDebug`、`assembleDebugAndroidTest`、`lintDebug` 通过，`testDebugUnitTest` 280 项通过（新增 `AgentAiDataTest` 7 项，覆盖解析、非法数据拒绝、令牌类型过滤、账本 ID 字符串）；在隔离服务上用同样的请求体和字段核对了用量、余额、MCP 开关、两种令牌生成、密码错误被拒、列表过滤、撤销，12 项通过，新生成的 API 令牌可调用只读接口。**未做**：Android 页面本身未在模拟器或真机上运行。
+
+网页侧待补：手机网页缺少产品资产页（桌面有）；网页端缺少本 fork 的版本更新提示（Android 有，原实现查 SMTM 仓库已有意不移植，补回时改查 `mawanglin/finexy-ai-bookkeeping`）；网页端缺少加密备份与恢复（Android 有，网页现有数据导出）。每一批完成后在此表更新状态，并如实写明哪些只做了编译和单元测试、没有在模拟器或真机上运行。
+
 ### 阶段 E
 
 完成 TalkBack、最大字体、多尺寸/横屏、主题语义色、导航一致性；将 lint、Room migration、关键 instrumentation 和发布签名验证纳入 CI；生成并验证 release APK/AAB。生物识别成功路径需在已录入指纹的设备上人工验收。
