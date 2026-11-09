@@ -3,6 +3,7 @@ export enum CodingAssistantType {
 }
 
 export interface RecognizedTransactionResponse {
+    readonly ledgerId?: string;
     readonly type: number;
     readonly time?: number;
     readonly categoryId?: string;

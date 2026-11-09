@@ -18,7 +18,8 @@
         </v-card-title>
         <v-divider />
         <v-card-text class="flex-grow-1 pa-0 overflow-y-auto">
-            <div class="dialog-content-container d-flex flex-column flex-md-row">
+            <slot name="content-before" />
+            <div class="dialog-content-container d-flex flex-column flex-md-row" :inert="contentInert" v-if="!hideContent">
                 <div class="my-3">
                     <slot name="content-left-column" />
                 </div>
@@ -47,6 +48,8 @@ defineProps<{
     cancelButtonTitle: string;
     loading?: boolean;
     disabled?: boolean;
+    contentInert?: boolean;
+    hideContent?: boolean;
 }>();
 
 const emit = defineEmits<{

@@ -262,7 +262,7 @@ export default defineConfig(() => {
 
                         let assetType = fileExt;
 
-                        if (/png|jpe?g|gif|tiff|bmp|ico/i.test(fileExt)) {
+                        if (/png|jpe?g|gif|tiff|bmp|ico|webp/i.test(fileExt)) {
                             assetType = 'img';
                         } else if (/ttf|woff|woff2|svg|eot/i.test(fileExt)) {
                             assetType = 'fonts';

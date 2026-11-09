@@ -5,7 +5,7 @@
         :readonly="readonly"
         :disabled="disabled"
         :label="label"
-        :menu-props="{ contentClass: 'schedule-frequency-select-menu' }"
+        :menu-props="{ contentClass: 'schedule-frequency-select-menu', key: menuSession }"
         v-model="frequencyType"
         v-model:menu="menuState"
         @update:menu="onMenuStateChanged"
@@ -100,6 +100,7 @@ const frequencyTypeList = useTemplateRef<VList>('frequencyTypeList');
 const frequencyValueList = useTemplateRef<VList>('frequencyValueList');
 
 const menuState = ref<boolean>(false);
+const menuSession = ref(0);
 
 const firstDayOfWeek = computed<WeekDayValue>(() => userStore.currentUserFirstDayOfWeek);
 
@@ -250,6 +251,7 @@ function isFrequencyValueSelected(currentValue: number): boolean {
 
 function onMenuStateChanged(state: boolean): void {
     if (state) {
+        menuSession.value++;
         nextTick(() => {
             if (dropdownMenu.value && dropdownMenu.value.parentElement) {
                 scrollToSelectedItem(dropdownMenu.value.parentElement, '.schedule-frequency-value-container', '.schedule-frequency-value-container', '.frequency-value-selected');

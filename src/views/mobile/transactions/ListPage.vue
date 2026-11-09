@@ -16,9 +16,9 @@
                 </f7-link>
             </f7-nav-title>
             <f7-nav-right :class="{ 'navbar-compact-icons': true, 'disabled': loading }">
-                <f7-link v-if="isDataImportingEnabled()" aria-label="导入支付宝或微信账单" @click="showStatementImport = true">导入</f7-link>
+                <f7-link v-if="canWriteLedger && isDataImportingEnabled()" aria-label="导入支付宝或微信账单" @click="showStatementImport = true">导入</f7-link>
                 <f7-link icon-f7="search" :aria-label="tt('Search')" @click="toggleSearchbar"></f7-link>
-                <f7-link icon-f7="plus" :class="{ 'disabled': !canAddTransaction }" :aria-label="tt('Add')" @click="add"></f7-link>
+                <f7-link v-if="canWriteLedger" icon-f7="plus" aria-label="在当前账本记账" :class="{ 'disabled': !canAddTransaction }" @click="add"></f7-link>
             </f7-nav-right>
 
             <f7-subnavbar :inner="false" v-if="showSearchbar">
@@ -33,6 +33,11 @@
                 ></f7-searchbar>
             </f7-subnavbar>
         </f7-navbar>
+
+        <ledger-context-notice :limited="!isDefaultLedger" />
+        <f7-block v-if="loadingError" role="alert">当前账本流水加载失败，请重试。 <f7-link @click="reload()">重试</f7-link></f7-block>
+        <f7-block v-if="permissionError" role="alert">{{ permissionError }} <f7-link @click="reload()">重试权限读取</f7-link></f7-block>
+        <f7-block v-if="!isDefaultLedger && ledgerRole === LedgerMemberRole.Viewer">当前成员仅可查看，不能新增、修改或删除流水。</f7-block>
 
         <f7-popover class="chart-data-type-popover-menu">
             <f7-list dividers>
@@ -79,7 +84,7 @@
                                   :default-currency="false"
                                   :min-date="transactionCalendarMinDate"
                                   :max-date="transactionCalendarMaxDate"
-                                  :daily-total-amounts="getDailyTotalAmounts(currentMonthTransactionData)"
+                                  :daily-total-amounts="isDefaultLedger ? getDailyTotalAmounts(currentMonthTransactionData) : undefined"
                                   v-model="currentCalendarDate"></transaction-calendar>
         </f7-block>
 
@@ -95,7 +100,7 @@
                                 <f7-list-item>
                                     <template #title>
                                         <small>YYYY-MM</small>
-                                        <small class="transaction-amount-statistics" v-if="showTotalAmountInTransactionListPage">
+                                        <small class="transaction-amount-statistics" v-if="isDefaultLedger && showTotalAmountInTransactionListPage">
                                             <span>0.00 USD</span>
                                             <span>0.00 USD</span>
                                         </small>
@@ -174,7 +179,7 @@
         </div>
 
         <f7-list strong inset dividers :class="{ 'margin-vertical': pageType === TransactionListPageType.Calendar.type || showSearchbar, 'margin-vertical-half': pageType !== TransactionListPageType.Calendar.type && !showSearchbar }"
-                 v-if="!loading && noTransaction">
+                 v-if="!loading && !loadingError && noTransaction">
             <f7-list-item :title="tt('No transaction data')"></f7-list-item>
         </f7-list>
 
@@ -196,7 +201,7 @@
                                     <small>
                                         <span>{{ getDisplayLongYearMonth(transactionMonthList) }}</span>
                                     </small>
-                                    <small class="transaction-amount-statistics" v-if="showTotalAmountInTransactionListPage && hasMonthTotalAmount(transactionMonthList)">
+                                    <small class="transaction-amount-statistics" v-if="isDefaultLedger && showTotalAmountInTransactionListPage && hasMonthTotalAmount(transactionMonthList)">
                                         <span class="text-income">
                                             {{ getDisplayMonthTotalAmount(transactionMonthList, '+')?.income }}
                                         </span>
@@ -221,7 +226,7 @@
                         <f7-list-item swipeout chevron-center accordion-item
                                       class="transaction-info"
                                       :id="getTransactionDomId(transaction)"
-                                      :link="`/transaction/detail?id=${transaction.id}&type=${transaction.type}`"
+                                      :link="`/transaction/detail?ledgerId=${ledgersStore.selectedLedgerId}&id=${transaction.id}&type=${transaction.type}`"
                                       :key="transaction.id"
                                       v-for="(transaction, idx) in transactionMonthList.items"
                         >
@@ -279,7 +284,7 @@
                                             </div>
                                         </div>
                                         <div class="item-footer">
-                                            <div class="transaction-tags" v-if="showTagInTransactionListPage && transaction.tagIds && transaction.tagIds.length">
+                                            <div class="transaction-tags" v-if="isDefaultLedger && showTagInTransactionListPage && transaction.tagIds && transaction.tagIds.length">
                                                 <f7-chip media-text-color="var(--f7-chip-text-color)" class="transaction-tag"
                                                          :text="allTransactionTags[tagId]?.name"
                                                          :key="tagId"
@@ -301,7 +306,7 @@
                                     </div>
                                 </div>
                             </template>
-                            <f7-swipeout-actions :left="textDirection === TextDirection.RTL"
+                            <f7-swipeout-actions v-if="canWriteLedger" :left="textDirection === TextDirection.RTL"
                                                  :right="textDirection === TextDirection.LTR">
                                 <f7-swipeout-button color="primary" close
                                                     :text="tt('Duplicate')"
@@ -330,7 +335,7 @@
                                     <div class="transaction-picture-cell" :key="pictureInfo.pictureId"
                                          v-for="[transaction, pictureInfo] in allTransactionPictures(transactionMonthList.items)">
                                         <image-box class="transaction-picture-img" alt="picture"
-                                                   :link="`/transaction/detail?id=${transaction.id}&type=${transaction.type}`"
+                                                   :link="`/transaction/detail?ledgerId=${ledgersStore.selectedLedgerId}&id=${transaction.id}&type=${transaction.type}`"
                                                    :src="getTransactionPictureUrl(pictureInfo)">
                                             <template #error>
                                                 {{ tt('Failed to load image, please check whether the config "domain" and "root_url" are set correctly.') }}
@@ -581,6 +586,7 @@
                     </template>
                 </f7-list-item>
 
+                <template v-if="isDefaultLedger">
                 <f7-list-item group-title>
                     <small>{{ tt('Tags') }}</small>
                 </f7-list-item>
@@ -633,6 +639,7 @@
                         </template>
                     </f7-list-item>
                 </template>
+                </template>
             </f7-list>
         </f7-popover>
 
@@ -650,12 +657,19 @@
 </template>
 
 <script setup lang="ts">
-import StatementImportPopup from './StatementImportPopup.vue';
-import { isDataImportingEnabled } from '@/lib/server_settings.ts';
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import type { Router } from 'framework7/types';
 
 import { useI18n } from '@/locales/helpers.ts';
+import { isDataImportingEnabled } from '@/lib/server_settings.ts';
+import StatementImportPopup from './StatementImportPopup.vue';
+import LedgerContextNotice from '@/components/mobile/LedgerContextNotice.vue';
+import { useLedgersStore } from '@/stores/ledger.ts';
+import { DefaultLedgerId } from '@/models/ledger.ts';
+import { canWriteMobileLedger, mobileLedgerRole } from '@/lib/mobile_ledger.ts';
+import { LedgerMemberRole } from '@/models/ledger.ts';
+import { useUserStore } from '@/stores/user.ts';
+import services from '@/lib/services.ts';
 import { scrollToSelectedItem } from '@/lib/ui/common.ts';
 import {
     type Framework7Dom,
@@ -733,7 +747,7 @@ const {
     formatNumberToLocalizedNumeralsWithoutDigitGrouping
 } = useI18n();
 
-const { showAlert, showToast, routeBackOnError } = useI18nUIComponents();
+const { showAlert, showToast } = useI18nUIComponents();
 
 const {
     pageType,
@@ -797,6 +811,17 @@ const accountsStore = useAccountsStore();
 const transactionCategoriesStore = useTransactionCategoriesStore();
 const transactionTagsStore = useTransactionTagsStore();
 const transactionsStore = useTransactionsStore();
+const ledgersStore = useLedgersStore();
+const userStore = useUserStore();
+const isDefaultLedger = computed(() => ledgersStore.selectedLedgerId === DefaultLedgerId);
+const ledgerRole = ref<number | null>(null);
+const permissionLedgerId = ref<string | null>(null);
+const permissionUsername = ref<string | undefined>(undefined);
+const permissionError = ref('');
+const canWriteLedger = computed(() => permissionLedgerId.value === ledgersStore.selectedLedgerId && permissionUsername.value === userStore.currentUserBasicInfo?.username && canWriteMobileLedger(ledgerRole.value));
+const deleteLedgerId = ref<string | null>(null);
+const deleteUsername = ref<string | undefined>(undefined);
+let loadGeneration = 0;
 
 const loadingError = ref<unknown | null>(null);
 const loadingMore = ref<boolean>(false);
@@ -813,7 +838,7 @@ const textDirection = computed<TextDirection>(() => getCurrentLanguageTextDirect
 const isDarkMode = computed<boolean>(() => environmentsStore.framework7DarkMode || false);
 
 const transactions = computed<TransactionMonthList[]>(() => {
-    if (loading.value) {
+    if (loading.value || transactionsStore.transactionListLedgerId !== ledgersStore.selectedLedgerId) {
         return [];
     }
 
@@ -1021,7 +1046,7 @@ function init(): void {
         type: initQuery['type'] && parseInt(initQuery['type']) > 0 ? parseInt(initQuery['type']) : undefined,
         categoryIds: initQuery['categoryIds'],
         accountIds: initQuery['accountIds'],
-        tagFilter: initQuery['tagFilter'],
+        tagFilter: isDefaultLedger.value ? initQuery['tagFilter'] : '',
         keyword: initQuery['keyword'],
         matchMode: initQuery['matchMode'] && parseInt(initQuery['matchMode']) >= 0 ? parseInt(initQuery['matchMode']) : undefined
     });
@@ -1029,101 +1054,109 @@ function init(): void {
     reload();
 }
 
-function reload(done?: () => void): void {
-    const force = !!done;
-
-    if (!done) {
-        loading.value = true;
+async function refreshLedgerRole(ledgerId = ledgersStore.selectedLedgerId, generation = loadGeneration): Promise<void> {
+    const username = userStore.currentUserBasicInfo?.username;
+    ledgerRole.value = null;
+    permissionLedgerId.value = null;
+    permissionError.value = '';
+    try {
+        const role = ledgerId === DefaultLedgerId ? LedgerMemberRole.Owner : await services.listLedgerMembers({ ledgerId }).then(response => {
+            if (!response.data?.success || !Array.isArray(response.data.result)) throw new Error('无法读取当前账本权限');
+            return mobileLedgerRole(ledgerId, response.data.result);
+        });
+        if (generation !== loadGeneration || ledgerId !== ledgersStore.selectedLedgerId || username !== userStore.currentUserBasicInfo?.username) return;
+        ledgerRole.value = role;
+        permissionLedgerId.value = ledgerId;
+        permissionUsername.value = username;
+    } catch {
+        if (generation === loadGeneration && ledgerId === ledgersStore.selectedLedgerId && username === userStore.currentUserBasicInfo?.username) permissionError.value = '无法读取当前账本权限，写入操作已禁用。';
     }
+}
 
+function reload(done?: () => void): void {
+    const generation = ++loadGeneration;
+    const ledgerId = ledgersStore.selectedLedgerId;
+    void refreshLedgerRole(ledgerId, generation);
+    loading.value = true;
+    loadingMore.value = false;
+    loadingError.value = null;
     const isGalleryMode = pageType.value === TransactionListPageType.Gallery.type;
-
     transactionInvisibleYearMonths.value = {};
     transactionYearMonthListHeights.value = {};
 
     Promise.all([
-        accountsStore.loadAllAccounts({ force: false }),
-        transactionCategoriesStore.loadAllCategories({ force: false }),
-        transactionTagsStore.loadAllTags({ force: false })
+        accountsStore.loadAllAccounts({ force: false, ledgerId }),
+        transactionCategoriesStore.loadAllCategories({ force: false, ledgerId }),
+        ledgerId === DefaultLedgerId ? transactionTagsStore.loadAllTags({ force: false }) : Promise.resolve([])
     ]).then(() => {
+        if (generation !== loadGeneration || ledgerId !== ledgersStore.selectedLedgerId) throw { stale: true };
         if (queryMonthlyData.value) {
             const currentMonthMinDate = parseDateTimeFromUnixTime(query.value.minTime);
-            const currentYear = currentMonthMinDate.getGregorianCalendarYear();
-            const currentMonth = currentMonthMinDate.getGregorianCalendarMonth();
-
             return transactionsStore.loadMonthlyAllTransactions({
-                year: currentYear,
-                month: currentMonth,
-                mustHavePictures: isGalleryMode,
-                withPictures: isGalleryMode || showPictureIndicatorInTransactionListPage.value,
-                autoExpand: true,
-                defaultCurrency: selectedAccountDefaultCurrency.value
-            });
-        } else {
-            return transactionsStore.loadTransactions({
-                reload: true,
+                ledgerId,
+                year: currentMonthMinDate.getGregorianCalendarYear(),
+                month: currentMonthMinDate.getGregorianCalendarMonth(),
                 mustHavePictures: isGalleryMode,
                 withPictures: isGalleryMode || showPictureIndicatorInTransactionListPage.value,
                 autoExpand: true,
                 defaultCurrency: selectedAccountDefaultCurrency.value
             });
         }
+        return transactionsStore.loadTransactions({
+            ledgerId,
+            reload: true,
+            mustHavePictures: isGalleryMode,
+            withPictures: isGalleryMode || showPictureIndicatorInTransactionListPage.value,
+            autoExpand: true,
+            defaultCurrency: selectedAccountDefaultCurrency.value
+        });
     }).then(() => {
-        done?.();
-
-        if (force) {
-            showToast('Data has been updated');
-        }
-
+        if (generation !== loadGeneration || ledgerId !== ledgersStore.selectedLedgerId) return;
+        if (done) showToast('Data has been updated');
         loading.value = false;
         setTransactionMonthListHeights(true);
     }).catch(error => {
-        if (error.processed || done) {
-            loading.value = false;
-        }
-
+        if (generation !== loadGeneration || ledgerId !== ledgersStore.selectedLedgerId || error.stale || error.isUpToDate) return;
+        loadingError.value = error;
+        if (!error.processed) showToast(error.message || error);
+    }).finally(() => {
         done?.();
-
-        if (!error.processed) {
-            if (!done) {
-                loadingError.value = error;
-            }
-
-            showToast(error.message || error);
-        }
+        if (generation === loadGeneration) loading.value = false;
     });
 }
 
 function loadMore(autoExpand: boolean): void {
-    if (!hasMoreTransaction.value) {
-        return;
-    }
-
-    if (loadingMore.value || loading.value) {
-        return;
-    }
-
+    if (!hasMoreTransaction.value || loadingMore.value || loading.value) return;
+    const generation = loadGeneration;
+    const ledgerId = ledgersStore.selectedLedgerId;
     const isGalleryMode = pageType.value === TransactionListPageType.Gallery.type;
-
     loadingMore.value = true;
-
     transactionsStore.loadTransactions({
+        ledgerId,
         reload: false,
         mustHavePictures: isGalleryMode,
         withPictures: isGalleryMode || showPictureIndicatorInTransactionListPage.value,
         autoExpand: autoExpand,
         defaultCurrency: selectedAccountDefaultCurrency.value
     }).then(() => {
-        loadingMore.value = false;
+        if (generation !== loadGeneration || ledgerId !== ledgersStore.selectedLedgerId) return;
         setTransactionMonthListHeights(false);
     }).catch(error => {
-        loadingMore.value = false;
-
-        if (!error.processed) {
-            showToast(error.message || error);
-        }
+        if (generation !== loadGeneration || ledgerId !== ledgersStore.selectedLedgerId || error.stale) return;
+        if (!error.processed) showToast(error.message || error);
+    }).finally(() => {
+        if (generation === loadGeneration) loadingMore.value = false;
     });
 }
+
+watch(() => [ledgersStore.selectedLedgerId, userStore.currentUserBasicInfo?.username], () => {
+    showDeleteActionSheet.value = false;
+    transactionToDelete.value = null;
+    deleteLedgerId.value = null;
+    showStatementImport.value = false;
+    transactionsStore.updateTransactionListFilter({ accountIds: '', categoryIds: '', tagFilter: '' });
+    reload();
+}, { flush: 'sync' });
 
 function changePageType(type: number): void {
     pageType.value = type;
@@ -1379,6 +1412,7 @@ function filterMultipleAccounts(): void {
 }
 
 function changeTagFilter(tagFilter: string): void {
+    if (!isDefaultLedger.value) return;
     if (query.value.tagFilter === tagFilter) {
         return;
     }
@@ -1442,6 +1476,7 @@ function changeAmountFilter(filterType: string): void {
 }
 
 function add(): void {
+    if (!canWriteLedger.value || !canAddTransaction.value || transactionsStore.transactionListLedgerId !== ledgersStore.selectedLedgerId) return;
     const currentUnixTime = getCurrentUnixTime();
 
     let setTransactionTime = false;
@@ -1457,7 +1492,7 @@ function add(): void {
         }
     }
 
-    const params: string[] = [];
+    const params: string[] = [`ledgerId=${ledgersStore.selectedLedgerId}`];
 
     if (setTransactionTime) {
         params.push(`time=${newTransactionTime}`);
@@ -1483,20 +1518,26 @@ function add(): void {
 }
 
 function duplicate(transaction: Transaction): void {
-    props.f7router.navigate(`/transaction/add?id=${transaction.id}&type=${transaction.type}`);
+    if (!canWriteLedger.value || transactionsStore.transactionListLedgerId !== ledgersStore.selectedLedgerId) return;
+    props.f7router.navigate(`/transaction/add?ledgerId=${ledgersStore.selectedLedgerId}&id=${transaction.id}&type=${transaction.type}`);
 }
 
 function edit(transaction: Transaction): void {
-    props.f7router.navigate(`/transaction/edit?id=${transaction.id}&type=${transaction.type}`);
+    if (!canWriteLedger.value || !transaction.editable || transactionsStore.transactionListLedgerId !== ledgersStore.selectedLedgerId) return;
+    props.f7router.navigate(`/transaction/edit?ledgerId=${ledgersStore.selectedLedgerId}&id=${transaction.id}&type=${transaction.type}`);
 }
 
-function remove(transaction: Transaction | null, confirm: boolean): void {
+async function remove(transaction: Transaction | null, confirm: boolean): Promise<void> {
+    if (!canWriteLedger.value || transactionsStore.transactionListLedgerId !== ledgersStore.selectedLedgerId) { showToast('当前账本没有删除权限或数据已切换，请重新核对'); return; }
     if (!transaction) {
         showAlert('An error occurred');
         return;
     }
 
+    if (!transaction.editable) { showToast('此流水不可删除'); return; }
     if (!confirm) {
+        deleteLedgerId.value = ledgersStore.selectedLedgerId;
+        deleteUsername.value = userStore.currentUserBasicInfo?.username;
         transactionToDelete.value = transaction;
         showDeleteActionSheet.value = true;
         return;
@@ -1504,13 +1545,21 @@ function remove(transaction: Transaction | null, confirm: boolean): void {
 
     showDeleteActionSheet.value = false;
     transactionToDelete.value = null;
+    const ledgerId = deleteLedgerId.value;
+    const username = deleteUsername.value;
+    if (!ledgerId || ledgerId !== ledgersStore.selectedLedgerId || username !== userStore.currentUserBasicInfo?.username) { showToast('账本或账号已切换，删除已取消'); return; }
     showLoading();
 
+    await refreshLedgerRole(ledgerId);
+    if (!canWriteLedger.value || ledgerId !== ledgersStore.selectedLedgerId || username !== userStore.currentUserBasicInfo?.username) { hideLoading(); showToast('当前账本删除权限无法确认，请重试'); return; }
     transactionsStore.deleteTransaction({
+        ledgerId,
+        expectedUsername: username,
         transaction: transaction,
         defaultCurrency: selectedAccountDefaultCurrency.value,
         beforeResolve: (done) => {
-            onSwipeoutDeleted(getTransactionDomId(transaction), done);
+            if (ledgerId === ledgersStore.selectedLedgerId && username === userStore.currentUserBasicInfo?.username) onSwipeoutDeleted(getTransactionDomId(transaction), done);
+            else done();
         }
     }).then(() => {
         hideLoading();
@@ -1543,11 +1592,12 @@ function onCategoryPopoverOpen(event: { $el: Framework7Dom }): void {
 }
 
 function onPageAfterIn(): void {
+    void refreshLedgerRole();
     if (transactionsStore.transactionListStateInvalid && !loading.value) {
         reload();
     }
 
-    routeBackOnError(props.f7router, loadingError);
+
 }
 
 function onResize(): void {

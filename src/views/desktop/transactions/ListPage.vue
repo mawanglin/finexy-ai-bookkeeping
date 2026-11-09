@@ -1727,8 +1727,8 @@ function addByRecognizingImage(): void {
     });
 }
 
-function importTransaction(): void {
-    importDialog.value?.open().then(() => {
+function importTransaction(fileType?: string): void {
+    importDialog.value?.open(fileType).then(() => {
         reload(false, false);
     }).catch(error => {
         if (error) {

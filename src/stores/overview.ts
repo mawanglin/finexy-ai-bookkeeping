@@ -150,6 +150,8 @@ export const useOverviewStore = defineStore('overview', () => {
 
     const transactionOverviewData = ref<TransactionAmountsResponse>({});
     const transactionOverviewStateInvalid = ref<boolean>(true);
+    let overviewLoadGeneration = 0;
+
     const transactionUnreconciledCounts = ref<TransactionUnreconciledCountItem[]>([]);
     const transactionUnreconciledCountsStateInvalid = ref<boolean>(true);
     const transactionUnreconciledCountsAccountIds = ref<string[]>([]);
@@ -312,6 +314,7 @@ export const useOverviewStore = defineStore('overview', () => {
     }
 
     function resetTransactionOverview(): void {
+        ++overviewLoadGeneration;
         updateTransactionDateRange();
         transactionOverviewOptions.value.loadedMonths = 1;
         transactionOverviewData.value = {};
@@ -372,8 +375,13 @@ export const useOverviewStore = defineStore('overview', () => {
         const excludeCategoryIds: string[] = objectFieldWithValueToArrayItem(settingsStore.appSettings.overviewTransactionCategoryFilterInHomePage, true);
         const tagFilter: string = settingsStore.appSettings.overviewTransactionTagFilterInHomePage;
 
+        const generation = ++overviewLoadGeneration;
         return new Promise((resolve, reject) => {
             services.getTransactionAmounts(requestParams, excludeAccountIds, excludeCategoryIds, tagFilter).then(response => {
+                if (generation !== overviewLoadGeneration) {
+                    reject({ stale: true });
+                    return;
+                }
                 const data = response.data;
 
                 if (!data || !data.success || !data.result) {
@@ -395,6 +403,10 @@ export const useOverviewStore = defineStore('overview', () => {
 
                 resolve(data.result);
             }).catch(error => {
+                if (generation !== overviewLoadGeneration) {
+                    reject({ stale: true });
+                    return;
+                }
                 if (force) {
                     logger.error('failed to force load transaction overview', error);
                 } else {
