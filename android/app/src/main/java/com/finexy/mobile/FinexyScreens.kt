@@ -356,7 +356,7 @@ private fun MetricCard(label: String, amount: String, icon: String, accent: Colo
 }
 
 @Composable
-internal fun ActivityScreen(padding: PaddingValues, activities: List<Activity>, accounts: List<AccountEntity> = emptyList(), tags: List<TagEntity> = emptyList(), onEdit: (Activity) -> Unit, onDelete: (Activity) -> Unit, readOnly: Boolean = false, actionRunning: Boolean = false, actionMessage: String? = null, onImport: (() -> Unit)? = null) {
+internal fun ActivityScreen(padding: PaddingValues, activities: List<Activity>, accounts: List<AccountEntity> = emptyList(), tags: List<TagEntity> = emptyList(), onEdit: (Activity) -> Unit, onDelete: (Activity) -> Unit, readOnly: Boolean = false, actionRunning: Boolean = false, actionMessage: String? = null, onImport: (() -> Unit)? = null, onBatchDelete: ((List<Activity>) -> Unit)? = null) {
     var filter by rememberSaveable { mutableStateOf("全部") }
     var range by rememberSaveable { mutableStateOf("累计") }
     var accountId by rememberSaveable { mutableLongStateOf(0L) }
@@ -364,13 +364,32 @@ internal fun ActivityScreen(padding: PaddingValues, activities: List<Activity>, 
     var tagId by rememberSaveable { mutableLongStateOf(0L) }
     var query by rememberSaveable { mutableStateOf("") }
     var pendingDelete by remember { mutableStateOf<Activity?>(null) }
+    var selecting by rememberSaveable { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf(setOf<String>()) }
+    var confirmBatchDelete by remember { mutableStateOf(false) }
     val rangeDays = when (range) { "近 7 天" -> 7; "近 30 天" -> 30; "近 90 天" -> 90; else -> 0 }
     val cutoff = statisticsCutoff(rangeDays)
     val filtered = filterStatisticsActivities(activities, cutoff, filter, accountId, category, tagId).filter { it.title.contains(query, true) }
     val accountOptions = (listOf(AccountEntity(TransactionEntity.LOCAL_ACCOUNT_ID, "本地钱包", "CNY")) + accounts.filter { account -> !account.hidden && account.type == 1 && (account.parentId == 0L || accounts.any { it.id == account.parentId && !it.hidden }) }).distinctBy { it.id }
     val categoryOptions = activities.map { it.category }.filter(String::isNotBlank).distinct().sorted()
+    val selectable = filtered.filter { !readOnly && it.editable }
+    val chosen = selectable.filter { it.id in selectedIds }
+    LaunchedEffect(readOnly, onBatchDelete) { if (readOnly || onBatchDelete == null) selecting = false }
     LazyColumn(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { PageHeading("流水", if (readOnly) "你在此账本中为只读成员。" else "每一笔，都清楚。") }
+        if (onBatchDelete != null && selectable.isNotEmpty() && !selecting) item {
+            OutlinedButton(onClick = { selecting = true; selectedIds = emptySet() }, enabled = !actionRunning, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("批量选择") }
+        }
+        if (selecting && onBatchDelete != null) item {
+            PanelCard {
+                Text("已选 ${chosen.size} / ${selectable.size} 笔", fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { selectedIds = if (chosen.size == selectable.size) emptySet() else selectable.map { it.id }.toSet() }, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (chosen.size == selectable.size) "取消全选" else "全选当前结果") }
+                    Button(onClick = { confirmBatchDelete = true }, enabled = chosen.isNotEmpty() && !actionRunning, modifier = Modifier.heightIn(min = 48.dp)) { Text("删除所选") }
+                    TextButton(onClick = { selecting = false; selectedIds = emptySet() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("完成") }
+                }
+            }
+        }
         if (onImport != null && !readOnly) item {
             OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("导入支付宝 / 微信账单") }
         }
@@ -385,9 +404,17 @@ internal fun ActivityScreen(padding: PaddingValues, activities: List<Activity>, 
         if (filtered.isEmpty()) item { Text(if (activities.isEmpty()) "还没有流水，点击下方橙色按钮记下第一笔。" else "没有符合条件的流水，试试其他筛选条件。", color = Muted) }
         else items(filtered, key = { it.id }) { row ->
             val editable = !readOnly && row.editable && !actionRunning
-            TransactionRow(row, onEdit = if (editable) ({ onEdit(row) }) else null, onDelete = if (editable) ({ pendingDelete = row }) else null)
+            if (selecting && onBatchDelete != null) BatchSelectRow(row, row.id in selectedIds, editable) { selectedIds = if (row.id in selectedIds) selectedIds - row.id else selectedIds + row.id }
+            else TransactionRow(row, onEdit = if (editable) ({ onEdit(row) }) else null, onDelete = if (editable) ({ pendingDelete = row }) else null)
         }
     }
+    if (confirmBatchDelete && onBatchDelete != null) AlertDialog(
+        onDismissRequest = { confirmBatchDelete = false },
+        title = { Text("删除所选 ${chosen.size} 笔流水？") },
+        text = { Text("删除后无法恢复，账户余额会随之调整。已选记录会逐笔删除，个别失败时会在页面上说明。") },
+        confirmButton = { TextButton(onClick = { val targets = chosen; confirmBatchDelete = false; selecting = false; selectedIds = emptySet(); onBatchDelete(targets) }) { Text("删除", color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = { confirmBatchDelete = false }) { Text("取消") } }
+    )
     pendingDelete?.let { target ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
@@ -397,6 +424,28 @@ internal fun ActivityScreen(padding: PaddingValues, activities: List<Activity>, 
             dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("取消") } }
         )
     }
+}
+
+@Composable
+private fun BatchSelectRow(row: Activity, selected: Boolean, enabled: Boolean, onToggle: () -> Unit) {
+    Surface(onClick = onToggle, enabled = enabled, color = Panel, shape = RoundedCornerShape(18.dp),
+        modifier = Modifier.semantics { contentDescription = "${if (selected) "取消选择" else "选择"}${row.title.ifBlank { row.kind }}，${activityDisplayAmount(row)}" }) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Checkbox(checked = selected, onCheckedChange = null, enabled = enabled, modifier = Modifier.padding(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text(row.title.ifBlank { row.kind }, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text("${row.category} · ${row.kind} · ${row.currency}", color = Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text(activityDisplayAmount(row), Modifier.widthIn(max = 150.dp), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+/** Plain-language result of a batch delete; failures are never hidden behind a success message. */
+internal fun batchDeleteMessage(deleted: Int, failed: Int, firstError: String?): String = when {
+    failed == 0 -> "已删除 $deleted 笔流水"
+    deleted == 0 -> "删除失败：${firstError ?: "请稍后重试"}（共 $failed 笔未删除）"
+    else -> "已删除 $deleted 笔，另有 $failed 笔失败：${firstError ?: "请稍后重试"}"
 }
 
 @Composable private fun FilterRow(options: List<String>, selected: String, onSelect: (String) -> Unit) {

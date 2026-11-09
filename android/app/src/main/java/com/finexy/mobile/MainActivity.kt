@@ -643,6 +643,17 @@ private fun LedgerContent(store: SecureStore, repository: TransactionRepository,
     BackHandler(enabled = statementImportPage || preferencesPage || selectedTab != 0) {
         if (statementImportPage) statementImportPage = false else if (preferencesPage) preferencesPage = false else selectedTab = 0
     }
+    // One transaction delete: shared ledgers delete on the server and resync, the default ledger queues a local delete.
+    suspend fun deleteActivityOnce(target: Activity) {
+        if (familyLedgerSelected) {
+            require(ledgerCanWrite && target.editable) { "你没有权限删除这笔流水" }
+            FinexyApi(store).deleteTransaction(requireNotNull(target.serverId), selectedLedgerId)
+            SyncEngine(FinexyApi(store), repository, autoUpdateExchangeRates = preferences.autoUpdateExchangeRatesData).sync()
+        } else {
+            repository.markDeleted(target.id)
+        }
+    }
+
     // Shared ledger accounts live in the server cache, so a write refreshes through a full sync.
     fun runLedgerAccountAction(done: String, failure: String, remote: suspend (FinexyApi) -> Unit) {
         scope.launch {
@@ -732,19 +743,38 @@ private fun LedgerContent(store: SecureStore, repository: TransactionRepository,
                             finally { activityActionRunning = false }
                         }
                     }
-                }, onDelete = { target ->
+                }, onBatchDelete = { targets ->
+                scope.launch {
+                    activityActionRunning = true
+                    activityActionMessage = null
+                    var deleted = 0
+                    var failed = 0
+                    var firstError: String? = null
+                    try {
+                        for (target in targets) {
+                            try {
+                                deleteActivityOnce(target)
+                                deleted++
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                failed++
+                                if (firstError == null) firstError = error.message
+                            }
+                        }
+                        if (deleted > 0 && !familyLedgerSelected) SyncScheduler.enqueueCurrent(context, store)
+                        activityActionMessage = batchDeleteMessage(deleted, failed, firstError)
+                    } finally {
+                        activityActionRunning = false
+                    }
+                }
+            }, onDelete = { target ->
                 scope.launch {
                     activityActionRunning = true
                     activityActionMessage = null
                     try {
-                        if (familyLedgerSelected) {
-                            require(ledgerCanWrite && target.editable) { "你没有权限删除这笔流水" }
-                            FinexyApi(store).deleteTransaction(requireNotNull(target.serverId), selectedLedgerId)
-                            SyncEngine(FinexyApi(store), repository, autoUpdateExchangeRates = preferences.autoUpdateExchangeRatesData).sync()
-                        } else {
-                            repository.markDeleted(target.id)
-                            SyncScheduler.enqueueCurrent(context, store)
-                        }
+                        deleteActivityOnce(target)
+                        if (!familyLedgerSelected) SyncScheduler.enqueueCurrent(context, store)
                         activityActionMessage = "流水已删除"
                     } catch (cancelled: CancellationException) {
                         throw cancelled
