@@ -73,7 +73,7 @@ func (s *AIReportService) List(c core.Context, uid int64) ([]*models.AiReport, e
 		return nil, errs.ErrUserIdInvalid
 	}
 	reports := make([]*models.AiReport, 0)
-	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=?", uid, false).Desc("generated_unix_time").Limit(50).Find(&reports)
+	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=?", uid, false).OrderBy("generated_unix_time desc").Limit(50).Find(&reports)
 	return reports, err
 }
 

@@ -309,6 +309,17 @@ docker stop finexy-android-e2e
 
 验证：`go test ./...`（CGO 开/关各 44 包）通过，含 CGO SQLite 周期待确认、账本/家庭/存钱全部专项；`npm run check` 通过（18 文件、38632 项与生产构建）；Android `assembleDebug`/`assembleDebugAndroidTest`/`lintDebug` 通过（Linux 临时 SDK）。一次性本地服务（临时目录 SQLite、端口 18096/18097，已停止删除）上用真实 Chrome 走通登录→首页→添加账户（字符串余额）→记账→余额与月度汇总正确，并与合并前前端逐页对比截图，无控制台错误。**未完成**：Android instrumentation 与隔离 Docker E2E（本次环境无模拟器/Docker），桌面深浅主题与读屏人工验收；8080 运行服务未部署。
 
+### 上游同步（2026-11-09，main 9cb3a08e → 7b3eaf73，含 v2.1.0/v2.1.1）
+
+分支 `sync/upstream-20261109` 合并上游 85 个提交，Finexy 版本号保持 2.0.0。关键决策：
+
+1. **数据库抽象层**：上游把 `*xorm.Session`、`*datastore.Database` 换成接口 `datastore.DatabaseSession`、`datastore.Database`。Finexy 服务（账本、家庭、存钱、周期待确认、资产、预算、账户、流水）已全部迁移；接口额外增加 Finexy 需要的 `Join` 与 `Close`，`Asc/Desc` 改用 `OrderBy`。
+2. **编号**：上游 `NormalSubcategoryImportPreset` 改为 29；`UUID_TYPE_IMPORT_PRESET` 与模板共用槽 7。
+3. **桌面 Web**：Finexy 路由保持不变，上游新增的导入预设页未挂入路由。三个共享弹窗采用上游“加载/提交中不可点外部关闭”的 `persistent` 条件并保留 Finexy class。头像、交易图片和自定义图标改用上游派生 token；Android 不使用这些 URL。
+4. **署名**：`package.json` author、Docker maintainer、fnOS manifest 的 maintainer/distributor 统一为 Cob。
+
+验证：`go test ./...` 45 包通过（CGO_ENABLED=0），CGO SQLite `pkg/services`、`pkg/datastore` 专项通过；`npm run check` 通过（20 文件、38713 项与生产构建）。一次性服务（临时目录 SQLite、端口 18101，已停止删除）上 18 项 API 冒烟通过（双用户注册、账本邀请/预览/接受、成员、概览、删除预览、家庭列表、待确认、AI 列表），真实 Chrome 走通桌面记账与移动端首页，金额正确且无控制台错误。本次未改动 Android 代码，未重新构建 Android；**未完成**：Android instrumentation、隔离 Docker E2E（本环境无模拟器/Docker）、桌面深浅主题与读屏人工验收；8080 运行服务未部署。
+
 ### 阶段 E
 
 完成 TalkBack、最大字体、多尺寸/横屏、主题语义色、导航一致性；将 lint、Room migration、关键 instrumentation 和发布签名验证纳入 CI；生成并验证 release APK/AAB。生物识别成功路径需在已录入指纹的设备上人工验收。

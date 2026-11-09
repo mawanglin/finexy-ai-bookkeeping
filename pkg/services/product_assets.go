@@ -3,7 +3,6 @@ package services
 import (
 	"time"
 
-	"xorm.io/xorm"
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/datastore"
@@ -85,7 +84,7 @@ func (s *ProductAssetService) CreateProductAsset(c core.Context, asset *models.P
 		asset.ManualMarketValueUnixTime = &now
 	}
 
-	return s.UserDataDB(asset.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(asset.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		if err := s.validateProductAsset(sess, asset, 0); err != nil {
 			return err
 		}
@@ -110,7 +109,7 @@ func (s *ProductAssetService) ModifyProductAsset(c core.Context, asset *models.P
 		asset.ManualMarketValueUnixTime = nil
 	}
 
-	return s.UserDataDB(asset.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(asset.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		if err := s.validateProductAsset(sess, asset, asset.ProductAssetId); err != nil {
 			return err
 		}
@@ -149,7 +148,7 @@ func (s *ProductAssetService) SellProductAsset(c core.Context, asset *models.Pro
 	asset.Status = models.PRODUCT_ASSET_STATUS_SOLD
 	asset.UpdatedUnixTime = time.Now().Unix()
 
-	return s.UserDataDB(asset.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(asset.Uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		if err := s.validateRelatedTransaction(sess, asset.Uid, asset.SaleTransactionId, models.TRANSACTION_DB_TYPE_INCOME, errs.ErrProductAssetSaleTransactionInvalid); err != nil {
 			return err
 		}
@@ -199,7 +198,7 @@ func (s *ProductAssetService) DeleteAllProductAssets(c core.Context, uid int64) 
 	return err
 }
 
-func (s *ProductAssetService) validateProductAsset(sess *xorm.Session, asset *models.ProductAsset, excludedAssetId int64) error {
+func (s *ProductAssetService) validateProductAsset(sess datastore.DatabaseSession, asset *models.ProductAsset, excludedAssetId int64) error {
 	if !isValidProductAssetCategory(asset.Category) {
 		return errs.ErrProductAssetCategoryInvalid
 	}
@@ -239,7 +238,7 @@ func (s *ProductAssetService) validateProductAsset(sess *xorm.Session, asset *mo
 	return nil
 }
 
-func (s *ProductAssetService) validateRelatedTransaction(sess *xorm.Session, uid int64, transactionId int64, expectedType models.TransactionDbType, invalidError error) error {
+func (s *ProductAssetService) validateRelatedTransaction(sess datastore.DatabaseSession, uid int64, transactionId int64, expectedType models.TransactionDbType, invalidError error) error {
 	if transactionId <= 0 {
 		return nil
 	}

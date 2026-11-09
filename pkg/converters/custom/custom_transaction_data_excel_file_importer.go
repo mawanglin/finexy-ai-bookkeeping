@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/converters/converter"
-	csvconverter "github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/converters/csv"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/converters/datatable"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/converters/excel"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
@@ -73,7 +72,7 @@ func (c *customTransactionDataExcelFileImporter) ParseImportedData(ctx core.Cont
 		return nil, nil, nil, nil, nil, nil, err
 	}
 
-	dataTable := csvconverter.CreateNewCustomCsvBasicDataTable(allLines, c.hasHeaderLine)
+	dataTable := datatable.CreateNewPlainTextDataTableWithoutLineNumbers(allLines, c.hasHeaderLine)
 	transactionDataTable := CreateNewCustomPlainTextDataTable(dataTable, c.columnIndexMapping, c.transactionTypeNameMapping, c.timeFormat, c.timezoneFormat, c.amountDecimalSeparator, c.amountDigitGroupingSymbol, c.geoLocationSeparator)
 	dataTableImporter := converter.CreateNewImporterWithTypeNameMapping(customTransactionTypeNameMapping, c.geoLocationSeparator, c.geoLocationOrder, c.transactionTagSeparator)
 

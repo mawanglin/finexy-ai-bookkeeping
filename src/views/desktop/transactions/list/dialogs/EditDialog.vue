@@ -1,5 +1,5 @@
 <template>
-    <v-dialog class="transaction-edit-dialog finexy-dialog finexy-dialog--wide" width="1000" :persistent="isTransactionModified || recognizing" v-model="showState">
+    <v-dialog class="transaction-edit-dialog finexy-dialog finexy-dialog--wide" width="1000" :persistent="loading || submitting || recognizing || isTransactionModified" v-model="showState">
         <two-column-dialog-layout :disabled="loading || submitting || recognizing" :loading="loading"
                                   :title="tt(title)" :cancel-button-title="tt(cancelButtonTitle)"
                                   @cancel="cancel">
@@ -347,7 +347,7 @@
                                         </template>
 
                                         <template #no-data>
-                                            <v-list class="py-0">
+                                            <v-list class="py-0" @keydown.up.stop @keydown.down.stop>
                                                 <v-list-item class="text-body-medium" v-if="mode !== TransactionEditPageMode.View" @click="updateGeoLocation(true)">{{ tt('Update Geographic Location') }}</v-list-item>
                                                 <v-list-item class="text-body-medium" v-if="mode !== TransactionEditPageMode.View" @click="clearGeoLocation">{{ tt('Clear Geographic Location') }}</v-list-item>
                                             </v-list>

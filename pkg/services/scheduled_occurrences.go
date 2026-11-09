@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"xorm.io/xorm"
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/datastore"
@@ -29,7 +28,7 @@ func (s *ScheduledOccurrenceService) List(c core.Context, uid int64, status mode
 	items := make([]*models.ScheduledOccurrence, 0)
 	session := s.UserDataDB(uid).NewSession(c)
 	defer session.Close()
-	err := session.Where("uid=? AND status=?", uid, status).Asc("scheduled_unix_time", "template_id").Limit(limit, offset).Find(&items)
+	err := session.Where("uid=? AND status=?", uid, status).OrderBy("scheduled_unix_time asc, template_id asc").Limit(limit, offset).Find(&items)
 	return items, err
 }
 
@@ -121,7 +120,7 @@ func (s *ScheduledOccurrenceService) Confirm(c core.Context, uid, templateId, sc
 		TimezoneUtcOffset: snapshot.UtcOffset, TransactionTime: utils.GetMinTransactionTimeFromUnixTime(scheduledUnixTime),
 		HideAmount: snapshot.HideAmount, Comment: snapshot.Comment, ScheduledCreated: true}
 	claimedElsewhere := errors.New("occurrence already handled")
-	err = Transactions.createTransactionWithHooks(c, transaction, tags, nil, func(session *xorm.Session) error {
+	err = Transactions.createTransactionWithHooks(c, transaction, tags, nil, func(session datastore.DatabaseSession) error {
 		rows, err := session.Where("uid=? AND template_id=? AND scheduled_unix_time=? AND status=?", uid, templateId, scheduledUnixTime, models.ScheduledOccurrencePending).
 			Cols("status").Update(&models.ScheduledOccurrence{Status: models.ScheduledOccurrenceConfirmed})
 		if err != nil {
@@ -131,7 +130,7 @@ func (s *ScheduledOccurrenceService) Confirm(c core.Context, uid, templateId, sc
 			return claimedElsewhere
 		}
 		return nil
-	}, func(session *xorm.Session) error {
+	}, func(session datastore.DatabaseSession) error {
 		rows, err := session.Where("uid=? AND template_id=? AND scheduled_unix_time=?", uid, templateId, scheduledUnixTime).
 			Cols("transaction_id", "updated_unix_time").Update(&models.ScheduledOccurrence{TransactionId: transaction.TransactionId, UpdatedUnixTime: time.Now().Unix()})
 		if err != nil {

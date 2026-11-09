@@ -61,7 +61,7 @@ func (s *AIReviewItemService) ListPending(c core.Context, uid int64) ([]*models.
 	}
 	items := make([]*models.AIReviewItem, 0)
 	err := s.UserDataDB(uid).NewSession(c).Where("uid=? AND deleted=? AND status=?", uid, false, models.AI_REVIEW_STATUS_PENDING).
-		Desc("created_unix_time").Limit(100).Find(&items)
+		OrderBy("created_unix_time desc").Limit(100).Find(&items)
 	return items, err
 }
 

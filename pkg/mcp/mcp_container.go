@@ -1,11 +1,14 @@
 package mcp
 
 import (
+	"encoding/json/v2"
+
 	"github.com/invopop/jsonschema"
 	orderedmap "github.com/wk8/go-ordered-map/v2"
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/errs"
+	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/log"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/models"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/settings"
 )
@@ -70,13 +73,14 @@ func InitializeMCPHandlers(config *settings.Config) error {
 		mcpTools:                 make([]*MCPTool, 0),
 	}
 
-	registerMCPTextContentToolHandler(container, MCPAddTransactionToolHandler)
-	registerMCPTextContentToolHandler(container, MCPQueryTransactionsToolHandler)
 	registerMCPTextContentToolHandler(container, MCPQueryAllAccountsToolHandler)
 	registerMCPTextContentToolHandler(container, MCPQueryAllAccountsBalanceToolHandler)
 	registerMCPTextContentToolHandler(container, MCPQueryAllTransactionCategoriesToolHandler)
 	registerMCPTextContentToolHandler(container, MCPQueryAllTransactionTagsToolHandler)
 	registerMCPTextContentToolHandler(container, MCPQueryLatestExchangeRatesToolHandler)
+	registerMCPTextContentToolHandler(container, MCPQueryTransactionsToolHandler)
+	registerMCPTextContentToolHandler(container, MCPAddTransactionToolHandler)
+	registerMCPTextContentToolHandler(container, MCPDeleteTransactionToolHandler)
 
 	Container = container
 	return nil
@@ -112,6 +116,24 @@ func registerMCPToolHandler[T MCPTextContent | MCPImageContent | MCPAudioContent
 }
 
 func handleTool[T MCPTextContent | MCPImageContent | MCPAudioContent | MCPResourceLink | MCPEmbeddedResource](ctx *core.WebContext, handler MCPToolHandler[T], currentConfig *settings.Config, services MCPAvailableServices, callToolReq *MCPCallToolRequest, user *models.User) (any, error) {
+	enabledTools := core.MCPAllTools
+
+	if context := ctx.GetTokenContext(); context != "" {
+		var tokenContext models.MCPTokenContext
+		err := json.Unmarshal([]byte(context), &tokenContext)
+
+		if err != nil {
+			log.Errorf(ctx, "[mcp_container.handleTool] failed to parse token context \"%s\", because %s", context, err.Error())
+			return nil, errs.ErrInvalidToken
+		}
+
+		enabledTools = tokenContext.EnabledTools
+	}
+
+	if !handler.ToolType().IsEnabled(enabledTools) {
+		return nil, errs.ErrMCPToolNotEnabled
+	}
+
 	structuredResponse, result, err := handler.Handle(ctx, callToolReq, user, currentConfig, services)
 
 	if err != nil {
@@ -132,6 +154,7 @@ func handleTool[T MCPTextContent | MCPImageContent | MCPAudioContent | MCPResour
 
 func createNewMCPToolInfo[T MCPTextContent | MCPImageContent | MCPAudioContent | MCPResourceLink | MCPEmbeddedResource](name string, handler MCPToolHandler[T]) *MCPTool {
 	mcpTool := &MCPTool{
+		ToolType:    handler.ToolType(),
 		Name:        name,
 		Description: handler.Description(),
 	}

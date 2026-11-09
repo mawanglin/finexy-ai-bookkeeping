@@ -4,7 +4,6 @@ import (
 	"errors"
 	"sort"
 	"time"
-	"xorm.io/xorm"
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/datastore"
@@ -31,7 +30,7 @@ var Ledgers = &LedgerService{
 }
 
 // locateLedger returns the shard and row holding one ledger.
-func (s *LedgerService) locateLedger(c core.Context, ledgerId int64) (*datastore.Database, *models.Ledger, error) {
+func (s *LedgerService) locateLedger(c core.Context, ledgerId int64) (datastore.Database, *models.Ledger, error) {
 	if ledgerId <= 0 {
 		return nil, nil, errs.ErrParameterInvalid
 	}
@@ -53,7 +52,7 @@ func (s *LedgerService) locateLedger(c core.Context, ledgerId int64) (*datastore
 // GetLedgerWithAccess returns one ledger and its shard when the membership of
 // the user grants the capability. The implicit default personal ledger is
 // granted to its owner without a database row.
-func (s *LedgerService) GetLedgerWithAccess(c core.Context, uid, ledgerId int64, capability func(models.FamilyMemberRole) bool) (*datastore.Database, *models.Ledger, error) {
+func (s *LedgerService) GetLedgerWithAccess(c core.Context, uid, ledgerId int64, capability func(models.FamilyMemberRole) bool) (datastore.Database, *models.Ledger, error) {
 	if uid <= 0 {
 		return nil, nil, errs.ErrUserIdInvalid
 	}
@@ -134,7 +133,7 @@ func (s *LedgerService) CreateLedger(c core.Context, uid int64, request *models.
 		return nil, errs.ErrLedgerNameInvalid
 	}
 
-	var db *datastore.Database
+	var db datastore.Database
 	if ledger.Type == models.LEDGER_TYPE_FAMILY {
 		var err error
 		db, _, err = Families.locateFamilyDB(c, uid, ledger.FamilyId, models.FamilyMemberRole.CanManage)
@@ -153,7 +152,7 @@ func (s *LedgerService) CreateLedger(c core.Context, uid int64, request *models.
 		return nil, errs.ErrSystemIsBusy
 	}
 
-	err := db.DoTransaction(c, func(sess *xorm.Session) error {
+	err := db.DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		if _, err := sess.Insert(ledger); err != nil {
 			return err
 		}
@@ -325,7 +324,7 @@ func (s *LedgerService) ListMembers(c core.Context, uid, ledgerId int64) ([]*mod
 	return responses, nil
 }
 
-func (s *LedgerService) ensureMembers(c core.Context, db *datastore.Database, ledger *models.Ledger) error {
+func (s *LedgerService) ensureMembers(c core.Context, db datastore.Database, ledger *models.Ledger) error {
 	count, err := db.NewSession(c).Where("ledger_id=?", ledger.LedgerId).Count(new(models.LedgerMember))
 	if err != nil || count > 0 {
 		return err
@@ -502,7 +501,7 @@ func (s *LedgerService) RevokeInvitation(c core.Context, uid, ledgerId, invitati
 	return err
 }
 
-func (s *LedgerService) findInvitation(c core.Context, token string) (*datastore.Database, *models.LedgerInvitation, error) {
+func (s *LedgerService) findInvitation(c core.Context, token string) (datastore.Database, *models.LedgerInvitation, error) {
 	for i := 0; i < s.UserDataDBCount(); i++ {
 		candidate := s.UserDataDBByIndex(i)
 		item := &models.LedgerInvitation{}
@@ -565,7 +564,7 @@ func (s *LedgerService) AcceptInvitation(c core.Context, uid int64, token string
 		}
 		return nil, errs.ErrLedgerNotFound
 	}
-	err = db.DoTransaction(c, func(sess *xorm.Session) error {
+	err = db.DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		existing := &models.LedgerMember{}
 		has, e := sess.Where("ledger_id=? AND uid=?", item.LedgerId, uid).Get(existing)
 		if e != nil {
@@ -767,7 +766,7 @@ func (s *LedgerService) DeleteLedger(c core.Context, uid, ledgerId int64) error 
 		return err
 	}
 
-	return db.DoTransaction(c, func(sess *xorm.Session) error {
+	return db.DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		for _, model := range []any{&models.Account{}, &models.Transaction{}, &models.SavingsGoal{}} {
 			has, err := sess.Where("ledger_id=?", ledgerId).Exist(model)
 			if err != nil {

@@ -45,7 +45,7 @@ func setupOccurrenceLedger(t *testing.T) {
 	}
 }
 
-func occurrenceDB(t *testing.T) *datastore.Database {
+func occurrenceDB(t *testing.T) datastore.Database {
 	t.Helper()
 	return datastore.Container.UserDataStore.Get(0)
 }

@@ -30,14 +30,12 @@ import {
 } from '@/lib/common.ts';
 
 import {
-    generateRandomUUID
-} from '@/lib/misc.ts';
-
-import {
     getCurrentUserInfo,
     updateCurrentUserInfo,
     clearCurrentUserInfo
 } from '@/lib/userstate.ts';
+
+import { deleteUserAvatarCacheEntry } from '@/lib/cache.ts';
 
 import logger from '@/lib/logger.ts';
 import services from '@/lib/services.ts';
@@ -45,7 +43,6 @@ import services from '@/lib/services.ts';
 export const useUserStore = defineStore('user', () => {
     const settingsStore = useSettingsStore();
     const currentUserBasicInfo = ref<UserBasicInfo | null>(getCurrentUserInfo());
-    const currentUserAvatarNoCacheId = ref<string>(generateRandomUUID());
 
     const currentUserNickname = computed<string | null>(() => {
         const userInfo = currentUserBasicInfo.value || EMPTY_USER_BASIC_INFO;
@@ -54,7 +51,7 @@ export const useUserStore = defineStore('user', () => {
 
     const currentUserAvatar = computed<string | null>(() => {
         const userInfo = currentUserBasicInfo.value || EMPTY_USER_BASIC_INFO;
-        return getUserAvatarUrl(userInfo, currentUserAvatarNoCacheId.value);
+        return getUserAvatarUrl(userInfo);
     });
 
     const currentUserDefaultAccountId = computed<string>(() => {
@@ -163,7 +160,12 @@ export const useUserStore = defineStore('user', () => {
     });
 
     function generateNewUserModel(language: string): User {
-        return User.createNewUser(language, settingsStore.localeDefaultSettings.currency, settingsStore.localeDefaultSettings.firstDayOfWeek);
+        return User.createNewUser(language,
+            settingsStore.localeDefaultSettings.currency,
+            settingsStore.localeDefaultSettings.firstDayOfWeek,
+            settingsStore.localeDefaultSettings.preferredExpenseAmountColor?.type,
+            settingsStore.localeDefaultSettings.preferredIncomeAmountColor?.type
+        );
     }
 
     function storeUserBasicInfo(userInfo: UserBasicInfo): void {
@@ -173,7 +175,6 @@ export const useUserStore = defineStore('user', () => {
 
     function resetUserBasicInfo(): void {
         currentUserBasicInfo.value = null;
-        currentUserAvatarNoCacheId.value = generateRandomUUID();
         clearCurrentUserInfo();
     }
 
@@ -265,10 +266,17 @@ export const useUserStore = defineStore('user', () => {
                     return;
                 }
 
-                storeUserBasicInfo(data.result);
-                currentUserAvatarNoCacheId.value = generateRandomUUID();
-
-                resolve(data.result);
+                if (currentUserBasicInfo.value?.avatar) {
+                    deleteUserAvatarCacheEntry(currentUserBasicInfo.value?.avatar).catch(error => {
+                        logger.warn('failed to delete user avatar cache entry', error);
+                    }).finally(() => {
+                        storeUserBasicInfo(data.result);
+                        resolve(data.result);
+                    });
+                } else {
+                    storeUserBasicInfo(data.result);
+                    resolve(data.result);
+                }
             }).catch(error => {
                 logger.error('failed to update user avatar', error);
 
@@ -293,9 +301,17 @@ export const useUserStore = defineStore('user', () => {
                     return;
                 }
 
-                storeUserBasicInfo(data.result);
-
-                resolve(data.result);
+                if (currentUserBasicInfo.value?.avatar) {
+                    deleteUserAvatarCacheEntry(currentUserBasicInfo.value?.avatar).catch(error => {
+                        logger.warn('failed to delete user avatar cache entry', error);
+                    }).finally(() => {
+                        storeUserBasicInfo(data.result);
+                        resolve(data.result);
+                    });
+                } else {
+                    storeUserBasicInfo(data.result);
+                    resolve(data.result);
+                }
             }).catch(error => {
                 logger.error('failed to remove user avatar', error);
 
@@ -457,10 +473,23 @@ export const useUserStore = defineStore('user', () => {
         });
     }
 
-    function getUserAvatarUrl(userInfoOrAvatarUrl: UserBasicInfo | string | null, disableBrowserCache: boolean | string): string | null {
+    function getUserAvatarUrl(userInfoOrAvatarUrl: UserBasicInfo | string | null): string | null {
         let avatarUrl = '';
 
         if (isObject(userInfoOrAvatarUrl)) {
+            if (userInfoOrAvatarUrl.avatarProvider === 'internal' && userInfoOrAvatarUrl.avatar) {
+                try {
+                    const avatarUrl = new URL(userInfoOrAvatarUrl.avatar);
+
+                    if (!avatarUrl.searchParams.has('token')) {
+                        return null;
+                    }
+                } catch (error) {
+                    logger.warn('failed to parse user avatar URL', error);
+                    return null;
+                }
+            }
+
             avatarUrl = userInfoOrAvatarUrl.avatar;
         } else if (isString(userInfoOrAvatarUrl)) {
             avatarUrl = userInfoOrAvatarUrl;
@@ -470,7 +499,7 @@ export const useUserStore = defineStore('user', () => {
             return null;
         }
 
-        return services.getInternalAvatarUrlWithToken(avatarUrl, disableBrowserCache);
+        return avatarUrl;
     }
 
     return {

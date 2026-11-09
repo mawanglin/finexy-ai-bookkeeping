@@ -8,6 +8,7 @@ import {
     type TypeAndName,
     type TypeAndNameWithAlternativeName,
     type TypeAndDisplayName,
+    type NameAndDisplayName,
     type LocalizedSwitchOption
 } from '@/core/base.ts';
 
@@ -183,7 +184,7 @@ import {
     type LocalizedImportFileTypeSubType,
     type LocalizedImportFileTypeSupportedEncodings,
     type LocalizedImportFileDocument
-} from '@/core/file.ts';
+} from '@/core/import_transaction.ts';
 
 import type { LocaleDefaultSettings } from '@/core/setting.ts';
 import type { ErrorResponse } from '@/core/api.ts';
@@ -191,9 +192,10 @@ import type { ErrorResponse } from '@/core/api.ts';
 import { AMOUNT_FACTOR, DISPLAY_HIDDEN_AMOUNT, INCOMPLETE_AMOUNT_SUFFIX } from '@/consts/numeral.ts';
 import { UTC_TIMEZONE, ALL_TIMEZONES } from '@/consts/timezone.ts';
 import { ALL_CURRENCIES, ACCOUNT_CURRENCY_NOT_SET_VALUE } from '@/consts/currency.ts';
-import { KnownErrorCode, SPECIFIED_API_NOT_FOUND_ERRORS, PARAMETERIZED_ERRORS } from '@/consts/api.ts';
+import { PARSE_TRANSACTION_API_URL_PATH, KnownErrorCode, SPECIFIED_API_NOT_FOUND_ERRORS, PARAMETERIZED_ERRORS, SUPPORTED_PARSE_TRANSACTION_RECORD_ID_TYPES } from '@/consts/api.ts';
 import { OAUTH2_PROVIDER_DISPLAY_NAME } from '@/consts/oauth2.ts';
-import { DEFAULT_DOCUMENT_LANGUAGE_FOR_IMPORT_FILE, SUPPORTED_DOCUMENT_LANGUAGES_FOR_IMPORT_FILE, SUPPORTED_IMPORT_FILE_CATEGORY_AND_TYPES } from '@/consts/file.ts';
+import { DEFAULT_DOCUMENT_LANGUAGE_FOR_IMPORT_FILE, SUPPORTED_DOCUMENT_LANGUAGES_FOR_IMPORT_FILE, SUPPORTED_IMPORT_FILE_CATEGORY_AND_TYPES } from '@/consts/import_transaction.ts';
+import { ALL_MCP_TOOLS } from '@/consts/mcp.ts';
 
 import {
     type CategorizedAccount,
@@ -292,7 +294,6 @@ import logger from '@/lib/logger.ts';
 import { useSettingsStore } from '@/stores/setting.ts';
 import { useUserStore } from '@/stores/user.ts';
 import { useExchangeRatesStore } from '@/stores/exchangeRates.ts';
-
 
 interface PreviewLanguageMessages {
     [key: string]: string | PreviewLanguageMessages;
@@ -573,6 +574,61 @@ export function useI18n() {
         return localizedParameters;
     }
 
+    function getLocalizedErrorForParseImportTransactionsAPI(translatedMessage: string, recordId: string | undefined, originalData: unknown | undefined): string {
+        if (!isDefined(recordId) && !isDefined(originalData)) {
+            return translatedMessage;
+        }
+
+        const localizedRecordIds: string[] = [];
+
+        if (isString(recordId)) {
+            for (const recordIdItem of recordId.split('-')) {
+                const parts = recordIdItem.split(':');
+
+                if (parts.length !== 2) {
+                    localizedRecordIds.length = 0;
+                    break;
+                }
+
+                const recordIdType = parts[0]!;
+                const recordIdIndex = parts[1]!;
+                const recordIdTypeI18nKey = SUPPORTED_PARSE_TRANSACTION_RECORD_ID_TYPES[recordIdType];
+
+                if (!recordIdTypeI18nKey || !recordIdIndex) {
+                    localizedRecordIds.length = 0;
+                    break;
+                }
+
+                localizedRecordIds.push(t(recordIdTypeI18nKey, {
+                    index: recordIdIndex
+                }));
+            }
+        }
+
+        const textualOriginalData: string | undefined = isString(originalData) ? (originalData.length > 0 ? originalData : undefined) : (isDefined(originalData) ? JSON.stringify(originalData) : undefined);
+        const textualRecordId: string | undefined = localizedRecordIds.length > 0 ? localizedRecordIds.join(t('format.misc.multiIndexJoinSeparator')) : undefined;
+
+        if (isDefined(textualRecordId) && isDefined(textualOriginalData)) {
+            return t('format.misc.importTransactionParseErrorWithRecordIdAndData', {
+                error: translatedMessage,
+                recordId: textualRecordId,
+                data: textualOriginalData
+            });
+        } else if (isDefined(textualRecordId)) {
+            return t('format.misc.importTransactionParseErrorWithRecordId', {
+                error: translatedMessage,
+                recordId: textualRecordId
+            });
+        } else if (isDefined(textualOriginalData)) {
+            return t('format.misc.importTransactionParseErrorWithData', {
+                error: translatedMessage,
+                data: textualOriginalData
+            });
+        } else {
+            return translatedMessage;
+        }
+    }
+
     function getDateTimeLocaleData(): DateTimeLocaleData {
         return moment.localeData();
     }
@@ -724,6 +780,19 @@ export function useI18n() {
             ret.push({
                 type: typeAndName.type,
                 displayName: t(typeAndName.name)
+            });
+        }
+
+        return ret;
+    }
+
+    function getLocalizedNameDisplayName(nameDisplayNames: NameAndDisplayName[]): NameAndDisplayName[] {
+        const ret: NameAndDisplayName[] = [];
+
+        for (const item of nameDisplayNames) {
+            ret.push({
+                name: item.name,
+                displayName: t(item.displayName)
             });
         }
 
@@ -1025,7 +1094,15 @@ export function useI18n() {
             return '';
         }
 
-        return t(finalMessage, parameters);
+        const translatedMessage = t(finalMessage, parameters);
+
+        if (isObject(message) && isObject(message.error) && isString(message.error.path) && isObject(message.error.context)) {
+            if (message.error.path.endsWith(PARSE_TRANSACTION_API_URL_PATH)) {
+                return getLocalizedErrorForParseImportTransactionsAPI(translatedMessage, message.error.context.recordId, message.error.context.originalData);
+            }
+        }
+
+        return translatedMessage;
     }
 
     function joinMultiText(textArray: string[]): string {
@@ -2570,6 +2647,46 @@ export function useI18n() {
         }
     }
 
+    function getLocalizedImportTransactionCustomSampleScript(currentTimezoneName: string): string {
+        return `// ${t('sample.importTransactionCustomScript.headerComment')}
+/**
+ * ${t('sample.importTransactionCustomScript.functionDescription')}
+ * @param {string[]} row - ${t('sample.importTransactionCustomScript.functionParamRowDescription')}
+ * @param {number} index - ${t('sample.importTransactionCustomScript.functionParamIndexDescription')}
+ * @returns {ImportTransaction|null} ${t('sample.importTransactionCustomScript.functionReturnDescription')}
+ */
+function parse(row, index) {
+    if (index < 1) {
+        return null;
+    }
+
+    return {
+        // ${t('sample.importTransactionCustomScript.fieldTimeDescription')}
+        time: row[0],
+        // ${t('sample.importTransactionCustomScript.fieldUtcOffsetDescription')}
+        utcOffset: ${currentTimezoneName ? 'parseUtcOffset(\'' + currentTimezoneName + '\')' : '\'' + getTimezoneOffsetMinutes(getCurrentUnixTime()) + '\''},
+        // ${t('sample.importTransactionCustomScript.fieldTypeDescription')}
+        type: TransactionType.Expense,
+        // ${t('sample.importTransactionCustomScript.fieldCategoryNameDescription')}
+        categoryName: row[4],
+        // ${t('sample.importTransactionCustomScript.fieldSourceAccountNameDescription')}
+        sourceAccountName: row[5],
+        // ${t('sample.importTransactionCustomScript.fieldDestinationAccountNameDescription')}
+        destinationAccountName: row[8],
+        // ${t('sample.importTransactionCustomScript.fieldSourceAmountDescription')}
+        sourceAmount: row[7],
+        // ${t('sample.importTransactionCustomScript.fieldDestinationAmountDescription')}
+        destinationAmount: row[10],
+        // ${t('sample.importTransactionCustomScript.fieldGeoLocationDescription')}
+        geoLocation: undefined,
+        // ${t('sample.importTransactionCustomScript.fieldTagNamesDescription')}
+        tagNames: '',
+        // ${t('sample.importTransactionCustomScript.fieldCommentDescription')}
+        description: row[13]
+    };
+}`;
+    }
+
     function setLanguage(languageKey: string | null, force?: boolean): LocaleDefaultSettings | null {
         if (!languageKey) {
             languageKey = getDefaultLanguage();
@@ -2642,9 +2759,19 @@ export function useI18n() {
             defaultFirstDayOfWeek = (WeekDay.parse(defaultFirstDayOfWeekName) as WeekDay).type;
         }
 
+        let preferredExpenseAmountColor = PresetAmountColor.DefaultExpenseColor;
+        let preferredIncomeAmountColor = PresetAmountColor.DefaultIncomeColor;
+
+        if (languageKey !== 'zh-Hans' && languageKey !== 'zh-Hant' && languageKey !== 'ja' && languageKey !== 'ko') {
+            preferredExpenseAmountColor = PresetAmountColor.Red;
+            preferredIncomeAmountColor = PresetAmountColor.Green;
+        }
+
         const localeDefaultSettings: LocaleDefaultSettings = {
             currency: defaultCurrency,
-            firstDayOfWeek: defaultFirstDayOfWeek
+            firstDayOfWeek: defaultFirstDayOfWeek,
+            preferredExpenseAmountColor: preferredExpenseAmountColor,
+            preferredIncomeAmountColor: preferredIncomeAmountColor
         };
 
         return localeDefaultSettings;
@@ -2792,6 +2919,7 @@ export function useI18n() {
         getAllTransactionExplorerValueMetrics: (operators?: TransactionExplorerValueMetric[]) => getLocalizedNameValue(operators ?? TransactionExplorerValueMetric.values()),
         getAllTransactionExplorerChartTypes: (operators?: TransactionExplorerChartType[]) => getLocalizedNameValue(operators ?? TransactionExplorerChartType.values()),
         getAllTransactionExplorerCustomChartDisplayLayouts: () => getLocalizedDisplayNameAndType(TransactionExplorerCustomChartDisplayLayout.values()),
+        getAllMCPTools: () => getLocalizedNameDisplayName(ALL_MCP_TOOLS),
         // get localized info
         getLanguageInfo,
         getEnableDisableOption: (value: boolean) => t(value ? 'Enabled' : 'Disabled'),
@@ -2900,6 +3028,7 @@ export function useI18n() {
         getLocalizedFileEncodingName,
         getLocalizedOAuth2ProviderName,
         getLocalizedOAuth2LoginText,
+        getLocalizedImportTransactionCustomSampleScript,
         // localization setting functions
         setLanguage,
         hasPreviewedConfiguration,

@@ -54,6 +54,7 @@ const (
 	NormalSubcategoryLedger                 = 26
 	NormalSubcategorySavingsGoal            = 27
 	NormalSubcategoryUserCustomIcon         = 28
+	NormalSubcategoryImportPreset           = 29
 )
 
 // Error represents the specific error returned to user

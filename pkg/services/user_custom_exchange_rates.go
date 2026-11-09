@@ -2,7 +2,6 @@ package services
 
 import (
 	"time"
-	"xorm.io/xorm"
 
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/core"
 	"github.com/SMTM-PH/finexy-ai-bookkeeping/pkg/datastore"
@@ -30,7 +29,7 @@ func nextUnusedExchangeRateDeletedTime(now int64, exists func(int64) (bool, erro
 	}
 }
 
-func reserveExchangeRateDeletedTime(sess *xorm.Session, uid int64, currency string, now int64) (int64, error) {
+func reserveExchangeRateDeletedTime(sess datastore.DatabaseSession, uid int64, currency string, now int64) (int64, error) {
 	return nextUnusedExchangeRateDeletedTime(now, func(candidate int64) (bool, error) {
 		return sess.Cols("uid").Where("uid=? AND deleted_unix_time=? AND currency=?", uid, candidate, currency).Exist(&models.UserCustomExchangeRate{})
 	})
@@ -67,7 +66,7 @@ func (s *UserCustomExchangeRatesService) UpdateCustomExchangeRate(c core.Context
 	newCustomExchangeRate := &models.UserCustomExchangeRate{}
 	defaultCurrencyExchangeRate := &models.UserCustomExchangeRate{}
 
-	err := s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	err := s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		oldCustomExchangeRate := &models.UserCustomExchangeRate{}
 		has, err := sess.Where("uid=? AND deleted_unix_time=? AND currency=?", uid, 0, currency).Get(oldCustomExchangeRate)
 
@@ -143,7 +142,7 @@ func (s *UserCustomExchangeRatesService) DeleteCustomExchangeRate(c core.Context
 		DeletedUnixTime: now,
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		deletedTime, err := reserveExchangeRateDeletedTime(sess, uid, currency, now)
 
 		if err != nil {
@@ -175,7 +174,7 @@ func (s *UserCustomExchangeRatesService) DeleteAllCustomExchangeRates(c core.Con
 		DeletedUnixTime: now,
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+	return s.UserDataDB(uid).DoTransaction(c, func(sess datastore.DatabaseSession) error {
 		_, err := sess.Cols("deleted_unix_time").Where("uid=? AND deleted_unix_time=?", uid, 0).Update(updateModel)
 
 		if err != nil {

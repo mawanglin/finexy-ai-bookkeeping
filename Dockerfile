@@ -1,5 +1,5 @@
 # Build backend binary file
-FROM golang:1.27.1-alpine3.24 AS be-builder
+FROM golang:1.27.3-alpine3.24 AS be-builder
 ARG GOPROXY=https://proxy.golang.org,direct
 ARG RELEASE_BUILD
 ARG BUILD_PIPELINE
@@ -21,7 +21,7 @@ RUN apk add git gcc g++ libc-dev
 RUN if [ "$SKIP_TESTS" = "true" ]; then ./build.sh backend --no-test; else ./build.sh backend; fi
 
 # Build frontend files
-FROM --platform=$BUILDPLATFORM node:26.10.0-alpine3.24 AS fe-builder
+FROM --platform=$BUILDPLATFORM node:26.13.0-alpine3.24 AS fe-builder
 ARG RELEASE_BUILD
 ARG BUILD_PIPELINE
 ARG BUILD_UNIXTIME
@@ -41,8 +41,8 @@ RUN apk add git
 RUN if [ "$SKIP_TESTS" = "true" ]; then ./build.sh frontend --no-test; else ./build.sh frontend; fi
 
 # Package docker image
-FROM alpine:3.24.2
-LABEL maintainer="SMTM-PH"
+FROM alpine:3.24.3
+LABEL maintainer="Cob"
 RUN addgroup -S -g 1000 ezbookkeeping && adduser -S -G ezbookkeeping -u 1000 ezbookkeeping
 RUN apk --no-cache add tzdata
 COPY docker/docker-entrypoint.sh /docker-entrypoint.sh
